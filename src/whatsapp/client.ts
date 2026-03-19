@@ -5,15 +5,47 @@ import makeWASocket, {
   fetchLatestBaileysVersion,
 } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
-import * as qrcode from 'qrcode-terminal';
+import * as qrcodeTerminal from 'qrcode-terminal';
+import QRCode from 'qrcode';
+import express from 'express';
 import { logger } from '../utils/logger';
 import path from 'path';
 
 let socket: WASocket | null = null;
 let connectionReady = false;
+let currentQR: string | null = null;
+let qrServer: ReturnType<typeof express> | null = null;
 
 const DATA_DIR = process.env.DATA_DIR || process.cwd();
 const AUTH_DIR = path.join(DATA_DIR, 'auth_state');
+const QR_PORT = parseInt(process.env.QR_PORT || '4000', 10);
+
+function startQRServer() {
+  if (qrServer) return;
+  qrServer = express();
+
+  qrServer.get('/', async (_req, res) => {
+    if (connectionReady) {
+      res.send('<html><body style="background:#111;color:#0f0;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;font-size:2em">WhatsApp conectado! ✅</body></html>');
+      return;
+    }
+    if (!currentQR) {
+      res.send('<html><head><meta http-equiv="refresh" content="3"></head><body style="background:#111;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;font-size:1.5em">Aguardando QR code... ⏳<br>A pagina atualiza sozinha.</body></html>');
+      return;
+    }
+    try {
+      const qrDataUrl = await QRCode.toDataURL(currentQR, { width: 400, margin: 2 });
+      res.send(`<html><head><meta http-equiv="refresh" content="30"></head><body style="background:#111;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;font-family:sans-serif"><h2>SUAV Bot - Escaneie o QR Code</h2><img src="${qrDataUrl}" style="border-radius:12px"/><p style="color:#888;margin-top:20px">Abra o WhatsApp > Aparelhos conectados > Conectar</p></body></html>`);
+    } catch {
+      res.status(500).send('Erro ao gerar QR');
+    }
+  });
+
+  qrServer.listen(QR_PORT, () => {
+    logger.info({ msg: `Servidor QR code rodando na porta ${QR_PORT}` });
+    logger.info({ msg: `Acesse o QR code no navegador: http://localhost:${QR_PORT}` });
+  });
+}
 
 /**
  * Inicializa conexao com WhatsApp via Baileys
@@ -41,10 +73,13 @@ export async function initWhatsApp(
     const { connection, lastDisconnect, qr } = update;
 
     if (qr) {
+      currentQR = qr;
       console.log('\n========================================');
       console.log('  ESCANEIE O QR CODE COM O WHATSAPP');
+      console.log('  Ou acesse no navegador: porta ' + QR_PORT);
       console.log('========================================\n');
-      qrcode.generate(qr, { small: true });
+      qrcodeTerminal.generate(qr, { small: true });
+      startQRServer();
     }
 
     if (connection === 'close') {
@@ -71,6 +106,7 @@ export async function initWhatsApp(
 
     if (connection === 'open') {
       connectionReady = true;
+      currentQR = null;
       logger.info('WhatsApp conectado com sucesso!');
       if (onConnected) onConnected();
     }
