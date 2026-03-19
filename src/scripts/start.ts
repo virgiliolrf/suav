@@ -1,50 +1,49 @@
 import { execSync } from 'child_process';
-import { existsSync, mkdirSync } from 'fs';
-import path from 'path';
+import { PrismaClient } from '@prisma/client';
 
-const DATA_DIR = process.env.DATA_DIR || '.';
-const DB_PATH = path.join(DATA_DIR, 'suav.db');
+const DATABASE_URL = process.env.DATABASE_URL;
 
-// Garantir que o diretorio de dados existe
-if (!existsSync(DATA_DIR)) {
-  mkdirSync(DATA_DIR, { recursive: true });
-}
-
-// Apontar DATABASE_URL para o volume persistente
-process.env.DATABASE_URL = `file:${DB_PATH}`;
-
-const isFirstRun = !existsSync(DB_PATH);
-
-console.log(`[start] DATA_DIR: ${DATA_DIR}`);
-console.log(`[start] DATABASE_URL: ${process.env.DATABASE_URL}`);
-console.log(`[start] Primeiro run: ${isFirstRun}`);
-
-// Rodar migrations
-console.log('[start] Aplicando migrations...');
-try {
-  execSync('npx prisma db push --accept-data-loss', {
-    stdio: 'inherit',
-    env: { ...process.env, DATABASE_URL: `file:${DB_PATH}` },
-  });
-} catch (err) {
-  console.error('[start] Erro nas migrations:', err);
+if (!DATABASE_URL) {
+  console.error('[start] DATABASE_URL nao configurada!');
   process.exit(1);
 }
 
-// Seed somente no primeiro run (banco vazio)
-if (isFirstRun) {
-  console.log('[start] Banco novo detectado, rodando seed...');
-  try {
-    execSync('npx tsx prisma/seed.ts', {
-      stdio: 'inherit',
-      env: { ...process.env, DATABASE_URL: `file:${DB_PATH}` },
-    });
-  } catch (err) {
-    console.error('[start] Erro no seed:', err);
-    // Nao sair - o bot pode funcionar sem seed
-  }
+console.log('[start] Conectando ao PostgreSQL...');
+
+// Criar tabelas no banco (se nao existirem)
+console.log('[start] Aplicando schema...');
+try {
+  execSync('npx prisma db push --accept-data-loss', {
+    stdio: 'inherit',
+  });
+} catch (err) {
+  console.error('[start] Erro ao aplicar schema:', err);
+  process.exit(1);
 }
 
-// Iniciar o bot
-console.log('[start] Iniciando bot...');
-import('../index');
+async function main() {
+  // Verificar se o banco ja tem dados (seed somente se vazio)
+  const prisma = new PrismaClient();
+  try {
+    const count = await prisma.category.count();
+    if (count === 0) {
+      console.log('[start] Banco vazio detectado, rodando seed...');
+      execSync('npx tsx prisma/seed.ts', { stdio: 'inherit' });
+    } else {
+      console.log(`[start] Banco ja possui dados (${count} categorias). Seed pulado.`);
+    }
+  } catch (err) {
+    console.error('[start] Erro ao verificar/seed:', err);
+  } finally {
+    await prisma.$disconnect();
+  }
+
+  // Iniciar o bot
+  console.log('[start] Iniciando bot...');
+  require('../index');
+}
+
+main().catch((err) => {
+  console.error('[start] Erro fatal:', err);
+  process.exit(1);
+});
