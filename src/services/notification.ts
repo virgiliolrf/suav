@@ -184,7 +184,7 @@ export async function sendStartupNotification(): Promise<void> {
   }
 
   const messageForProfessionals = [
-    `Oii! Aqui é a Mari, assistente virtual da SUAV 💅🌸`,
+    `Oi! Aqui é a Mari, assistente virtual da SUAV 😊`,
     ``,
     `A partir de agora, vou te avisar pelo WhatsApp sobre:`,
     ``,
@@ -194,7 +194,7 @@ export async function sendStartupNotification(): Promise<void> {
     `⏰ *Lembretes* — 24h e 1h antes de cada atendimento`,
     ``,
     `Você não precisa fazer nada, as notificações chegam automaticamente!`,
-    `Qualquer dúvida, fale com a gerente. Bom trabalho! 💖`,
+    `Qualquer dúvida, fale com a gerente. Bom trabalho!`,
   ].join('\n');
 
   // Buscar todas as profissionais com telefone
@@ -221,20 +221,20 @@ export async function sendStartupNotification(): Promise<void> {
 
   // Atualizar mensagem admin com contagem real
   const adminMessage = [
-    `Oii! Aqui é a Mari, sua assistente virtual 💅🌸`,
+    `Oi! Aqui é a Mari, assistente virtual da SUAV 😊`,
     ``,
     `Estou online e pronta para:`,
     ``,
-    `📱 *Atender clientes* — via WhatsApp (e Instagram se configurado)`,
-    `📋 *Agendar horários* — automaticamente, verificando disponibilidade`,
+    `📱 *Atender clientes* — via WhatsApp`,
+    `📋 *Agendar horários* — verificando disponibilidade automaticamente`,
     `💰 *Informar valores* — dos 101 serviços cadastrados`,
     `🔔 *Notificar profissionais* — sobre agendamentos, remarcações e cancelamentos`,
     `⏰ *Enviar lembretes* — 24h e 1h antes dos atendimentos`,
-    `📊 *Relatório diário* — enviado automaticamente no fim do expediente`,
+    `📊 *Relatório diário* — enviado no fim do expediente`,
     ``,
-    `✅ ${sentCount} profissionais notificadas com sucesso.`,
+    `✅ ${sentCount} profissionais notificadas.`,
     ``,
-    `Você pode me perguntar sobre faturamento, agendamentos, ranking de profissionais e muito mais! 💖`,
+    `Você pode me perguntar sobre faturamento, agendamentos, ranking de profissionais e mais!`,
   ].join('\n');
 
   // Enviar para admins (gerente + dona)

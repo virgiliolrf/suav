@@ -1,19 +1,65 @@
 import { PrismaClient } from '@prisma/client';
 import { normalizePhone } from '../utils/phone';
+import { logger } from '../utils/logger';
 
 const prisma = new PrismaClient();
 
 /**
  * Verifica se um telefone e de admin
+ * Faz verificacao flexivel: com e sem 9o digito, com e sem 55
  */
 export async function isAdminPhone(phone: string): Promise<boolean> {
   const normalized = normalizePhone(phone);
 
-  const admin = await prisma.adminUser.findUnique({
-    where: { phone: normalized },
-  });
+  // Buscar todos os admins (poucos registros, nao impacta performance)
+  const admins = await prisma.adminUser.findMany();
 
-  return admin !== null;
+  if (admins.length === 0) {
+    logger.debug({ msg: 'Nenhum admin cadastrado no banco' });
+    return false;
+  }
+
+  // Verificar match flexivel
+  for (const admin of admins) {
+    const adminNorm = normalizePhone(admin.phone);
+
+    // Match exato
+    if (normalized === adminNorm) {
+      logger.info({ msg: 'Admin detectado (match exato)', phone: normalized, role: admin.role });
+      return true;
+    }
+
+    // Extrair parte local (sem 55)
+    const phoneLocal = normalized.startsWith('55') ? normalized.slice(2) : normalized;
+    const adminLocal = adminNorm.startsWith('55') ? adminNorm.slice(2) : adminNorm;
+
+    // Match sem country code
+    if (phoneLocal === adminLocal) {
+      logger.info({ msg: 'Admin detectado (sem country code)', phone: normalized, role: admin.role });
+      return true;
+    }
+
+    // Match com/sem 9o digito (DDD + 8 digitos vs DDD + 9 digitos)
+    // Ex: 27999722372 (11 dig) vs 2799722372 (10 dig)
+    if (phoneLocal.length === 11 && adminLocal.length === 10) {
+      // phoneLocal tem 9o digito, adminLocal nao
+      const withoutNinth = phoneLocal.slice(0, 2) + phoneLocal.slice(3);
+      if (withoutNinth === adminLocal) {
+        logger.info({ msg: 'Admin detectado (9o digito)', phone: normalized, role: admin.role });
+        return true;
+      }
+    } else if (phoneLocal.length === 10 && adminLocal.length === 11) {
+      // adminLocal tem 9o digito, phoneLocal nao
+      const withoutNinth = adminLocal.slice(0, 2) + adminLocal.slice(3);
+      if (withoutNinth === phoneLocal) {
+        logger.info({ msg: 'Admin detectado (9o digito inverso)', phone: normalized, role: admin.role });
+        return true;
+      }
+    }
+  }
+
+  logger.debug({ msg: 'Nao e admin', phone: normalized, adminsNoDb: admins.map(a => a.phone) });
+  return false;
 }
 
 /**

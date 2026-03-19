@@ -68,6 +68,10 @@ export async function handleIncomingMessage(
       ? await isAdminPhone(message.senderPhone)
       : false;
 
+    if (isAdmin) {
+      logger.info({ msg: 'ADMIN DETECTADO', phone: message.senderPhone, channel: message.channel });
+    }
+
     // Resolver telefone e dados do cliente
     let resolvedPhone = message.senderPhone || '';
     let clientName: string | undefined;
