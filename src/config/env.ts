@@ -21,6 +21,7 @@ const envSchema = z.object({
 
   // Geral
   TZ: z.string().optional().default('America/Sao_Paulo'),
+  DATA_DIR: z.string().optional().default('.'),
 });
 
 const parsed = envSchema.safeParse(process.env);

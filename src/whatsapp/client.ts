@@ -12,7 +12,8 @@ import path from 'path';
 let socket: WASocket | null = null;
 let connectionReady = false;
 
-const AUTH_DIR = path.join(process.cwd(), 'auth_state');
+const DATA_DIR = process.env.DATA_DIR || process.cwd();
+const AUTH_DIR = path.join(DATA_DIR, 'auth_state');
 
 /**
  * Inicializa conexao com WhatsApp via Baileys
