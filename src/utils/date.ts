@@ -83,7 +83,7 @@ export function formatTime(date: Date): string {
  * Ex: "quinta-feira, 20 de marco as 14:00"
  */
 export function formatDateTimeBR(date: Date): string {
-  return format(date, "EEEE, d 'de' MMMM 'as' HH:mm", { locale: ptBR });
+  return format(date, "EEEE, d 'de' MMMM 'às' HH:mm", { locale: ptBR });
 }
 
 /**
@@ -101,7 +101,7 @@ export function createDateTime(dateStr: string, timeStr: string): Date {
  * Retorna texto descritivo do horario de funcionamento
  */
 export function getBusinessHoursText(): string {
-  return 'Segunda a sexta das 09:00 as 19:00, sabado das 09:00 as 17:00. Domingo estamos fechados.';
+  return 'Segunda a sexta das 09:00 às 19:00, sábado das 09:00 às 17:00. Domingo estamos fechados.';
 }
 
 /**

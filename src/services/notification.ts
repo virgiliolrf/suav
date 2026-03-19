@@ -71,11 +71,11 @@ export async function notifyProfessional(appointmentId: number): Promise<boolean
   const messageForEmployee = [
     `Nova cliente agendada! ✨`,
     ``,
-    `Servico: ${appointment.service.name}`,
+    `Serviço: ${appointment.service.name}`,
     `Cliente: ${clientName} (${formatPhone(appointment.client.phone)})`,
     `Data: ${formatDateTimeBR(appointment.dateTime)}`,
-    `Horario: ${formatTime(appointment.dateTime)} as ${formatTime(appointment.endTime)}`,
-    `Valor: R$ ${appointment.service.price.toFixed(2).replace('.', ',')}`,
+    `Horário: ${formatTime(appointment.dateTime)} às ${formatTime(appointment.endTime)}`,
+    `Valor: R$ ${(appointment.priceAtBooking ?? appointment.service.price).toFixed(2).replace('.', ',')}`,
   ].join('\n');
 
   // 1. Notificar funcionaria
@@ -137,7 +137,7 @@ export async function notifyCancellation(appointmentId: number): Promise<boolean
   const message = [
     `Agendamento cancelado ❌`,
     ``,
-    `Servico: ${appointment.service.name}`,
+    `Serviço: ${appointment.service.name}`,
     `Cliente: ${clientName}`,
     `Data: ${formatDateTimeBR(appointment.dateTime)}`,
   ].join('\n');

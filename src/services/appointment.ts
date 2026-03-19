@@ -177,7 +177,11 @@ export async function cancelAppointment(
   }
 
   if (appointment.status === 'CANCELLED') {
-    return { success: false, message: 'Este agendamento ja foi cancelado' };
+    return { success: false, message: 'Este agendamento já foi cancelado' };
+  }
+
+  if (appointment.dateTime < new Date()) {
+    return { success: false, message: 'Não é possível cancelar um agendamento que já passou' };
   }
 
   await prisma.appointment.update({
@@ -255,6 +259,7 @@ export async function rescheduleAppointment(
       endTime: newEnd,
       status: 'CONFIRMED',
       notifiedEmployee: false,
+      priceAtBooking: appointment.priceAtBooking ?? appointment.service.price,
     },
   });
 
@@ -296,6 +301,8 @@ export async function getClientAppointments(
     where.status = status;
   } else {
     where.status = { in: ['CONFIRMED', 'PENDING'] };
+    // Só mostrar agendamentos futuros (não passados)
+    where.dateTime = { gte: new Date() };
   }
 
   const appointments = await prisma.appointment.findMany({

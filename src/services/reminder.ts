@@ -25,8 +25,9 @@ export async function sendAppointmentReminders(): Promise<void> {
 
   try {
     // === LEMBRETE 24H ===
-    const window24hStart = addHours(now, 23);
-    const window24hEnd = addHours(now, 25);
+    // Janela de 16 minutos (cron roda a cada 15 min, margem de 1 min)
+    const window24hStart = addMinutes(addHours(now, 23), 52);
+    const window24hEnd = addMinutes(addHours(now, 24), 8);
 
     const appointments24h = await prisma.appointment.findMany({
       where: {
@@ -76,8 +77,9 @@ export async function sendAppointmentReminders(): Promise<void> {
     }
 
     // === LEMBRETE 1H ===
-    const window1hStart = addMinutes(now, 50);
-    const window1hEnd = addMinutes(now, 70);
+    // Janela de 16 minutos (cron roda a cada 15 min, margem de 1 min)
+    const window1hStart = addMinutes(now, 52);
+    const window1hEnd = addMinutes(now, 68);
 
     const appointments1h = await prisma.appointment.findMany({
       where: {
