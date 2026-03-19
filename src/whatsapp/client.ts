@@ -7,43 +7,53 @@ import makeWASocket, {
 import { Boom } from '@hapi/boom';
 import * as qrcodeTerminal from 'qrcode-terminal';
 import QRCode from 'qrcode';
-import express from 'express';
+import http from 'http';
 import { logger } from '../utils/logger';
 import path from 'path';
 
 let socket: WASocket | null = null;
 let connectionReady = false;
 let currentQR: string | null = null;
-let qrServer: ReturnType<typeof express> | null = null;
+let qrServerStarted = false;
 
 const DATA_DIR = process.env.DATA_DIR || process.cwd();
 const AUTH_DIR = path.join(DATA_DIR, 'auth_state');
 const QR_PORT = parseInt(process.env.QR_PORT || '4000', 10);
 
 function startQRServer() {
-  if (qrServer) return;
-  qrServer = express();
+  if (qrServerStarted) return;
+  qrServerStarted = true;
 
-  qrServer.get('/', async (_req, res) => {
+  const server = http.createServer(async (req, res) => {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+
     if (connectionReady) {
-      res.send('<html><body style="background:#111;color:#0f0;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;font-size:2em">WhatsApp conectado! ✅</body></html>');
+      res.writeHead(200);
+      res.end('<html><body style="background:#111;color:#0f0;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;font-size:2em">WhatsApp conectado! ✅</body></html>');
       return;
     }
     if (!currentQR) {
-      res.send('<html><head><meta http-equiv="refresh" content="3"></head><body style="background:#111;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;font-size:1.5em">Aguardando QR code... ⏳<br>A pagina atualiza sozinha.</body></html>');
+      res.writeHead(200);
+      res.end('<html><head><meta http-equiv="refresh" content="3"></head><body style="background:#111;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;font-size:1.5em">Aguardando QR code... ⏳<br>A pagina atualiza sozinha.</body></html>');
       return;
     }
     try {
       const qrDataUrl = await QRCode.toDataURL(currentQR, { width: 400, margin: 2 });
-      res.send(`<html><head><meta http-equiv="refresh" content="30"></head><body style="background:#111;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;font-family:sans-serif"><h2>SUAV Bot - Escaneie o QR Code</h2><img src="${qrDataUrl}" style="border-radius:12px"/><p style="color:#888;margin-top:20px">Abra o WhatsApp > Aparelhos conectados > Conectar</p></body></html>`);
+      res.writeHead(200);
+      res.end(`<html><head><meta http-equiv="refresh" content="30"></head><body style="background:#111;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;font-family:sans-serif"><h2>SUAV Bot - Escaneie o QR Code</h2><img src="${qrDataUrl}" style="border-radius:12px"/><p style="color:#888;margin-top:20px">Abra o WhatsApp > Aparelhos conectados > Conectar</p></body></html>`);
     } catch {
-      res.status(500).send('Erro ao gerar QR');
+      res.writeHead(500);
+      res.end('Erro ao gerar QR');
     }
   });
 
-  qrServer.listen(QR_PORT, () => {
+  server.listen(QR_PORT, '0.0.0.0', () => {
     logger.info({ msg: `Servidor QR code rodando na porta ${QR_PORT}` });
     logger.info({ msg: `Acesse o QR code no navegador: http://localhost:${QR_PORT}` });
+  });
+
+  server.on('error', (err) => {
+    logger.error({ msg: 'Erro no servidor QR code', err });
   });
 }
 
