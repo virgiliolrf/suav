@@ -1,7 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { processMessage } from '../ai/agent';
 import { addMessage, getHistory } from '../conversation/manager';
-import { isAdminPhone } from '../conversation/context';
+import { isAdminPhone, isProfessionalPhone } from '../conversation/context';
 import { logger } from '../utils/logger';
 import type { ChannelType, ChannelSender, IncomingMessage } from './types';
 import { getConversationId } from './types';
@@ -63,13 +63,30 @@ export async function handleIncomingMessage(
     // Mostrar "digitando..."
     await sender.sendTyping(message.senderId);
 
-    // Verificar admin (so funciona com telefone/WhatsApp)
-    const isAdmin = message.senderPhone
-      ? await isAdminPhone(message.senderPhone)
-      : false;
+    // Determinar o papel do usuário: admin > professional > client
+    let role: 'admin' | 'professional' | 'client' = 'client';
+    let adminName: string | undefined;
+    let professionalInfo: { id: number; name: string } | null = null;
 
-    if (isAdmin) {
-      logger.info({ msg: 'ADMIN DETECTADO', phone: message.senderPhone, channel: message.channel });
+    if (message.senderPhone) {
+      // Verificar admin primeiro
+      const isAdmin = await isAdminPhone(message.senderPhone);
+      if (isAdmin) {
+        role = 'admin';
+        // Buscar nome do admin
+        const admin = await prisma.adminUser.findFirst({
+          where: { phone: { contains: message.senderPhone.replace(/^55/, '') } },
+        });
+        adminName = admin?.name || undefined;
+        logger.info({ msg: 'ADMIN DETECTADO', phone: message.senderPhone, name: adminName, channel: message.channel });
+      } else {
+        // Verificar se é profissional
+        professionalInfo = await isProfessionalPhone(message.senderPhone);
+        if (professionalInfo) {
+          role = 'professional';
+          logger.info({ msg: 'PROFISSIONAL DETECTADA', phone: message.senderPhone, name: professionalInfo.name, channel: message.channel });
+        }
+      }
     }
 
     // Resolver telefone e dados do cliente
@@ -87,8 +104,8 @@ export async function handleIncomingMessage(
       }
     }
 
-    // Buscar nome e profissional preferida do cliente (se tiver telefone)
-    if (resolvedPhone) {
+    // Buscar nome e profissional preferida do cliente (se for cliente e tiver telefone)
+    if (role === 'client' && resolvedPhone) {
       const client = await prisma.client.findUnique({
         where: { phone: resolvedPhone },
       });
@@ -108,12 +125,15 @@ export async function handleIncomingMessage(
     const response = await processMessage({
       userMessage: sanitizedText,
       conversationHistory: history,
-      isAdmin,
+      role,
       clientPhone: resolvedPhone,
       channel: message.channel,
       clientName,
       preferredProfessional,
       igsid: message.igsid,
+      adminName,
+      professionalId: professionalInfo?.id,
+      professionalName: professionalInfo?.name,
     });
 
     // Salvar resposta

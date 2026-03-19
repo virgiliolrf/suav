@@ -1,0 +1,126 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Category {
+  id       Int       @id @default(autoincrement())
+  name     String    @unique
+  slug     String    @unique
+  services Service[]
+
+  createdAt DateTime @default(now())
+}
+
+model Professional {
+  id             Int                   @id @default(autoincrement())
+  name           String
+  normalizedName String
+  phone          String?
+  active         Boolean               @default(true)
+  services       ProfessionalService[]
+  appointments   Appointment[]
+  workSchedule   WorkSchedule[]
+
+  createdAt DateTime @default(now())
+}
+
+model Service {
+  id              Int                   @id @default(autoincrement())
+  name            String
+  normalizedName  String
+  price           Float
+  durationMinutes Int
+  categoryId      Int
+  category        Category              @relation(fields: [categoryId], references: [id])
+  active          Boolean               @default(true)
+  professionals   ProfessionalService[]
+  appointments    Appointment[]
+
+  createdAt DateTime @default(now())
+}
+
+model ProfessionalService {
+  professionalId Int
+  serviceId      Int
+  professional   Professional @relation(fields: [professionalId], references: [id])
+  service        Service      @relation(fields: [serviceId], references: [id])
+
+  @@id([professionalId, serviceId])
+}
+
+model Client {
+  id                    Int           @id @default(autoincrement())
+  phone                 String        @unique
+  name                  String?
+  preferredProfessional String?
+  appointments          Appointment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Appointment {
+  id               Int      @id @default(autoincrement())
+  clientId         Int
+  client           Client   @relation(fields: [clientId], references: [id])
+  serviceId        Int
+  service          Service  @relation(fields: [serviceId], references: [id])
+  professionalId   Int
+  professional     Professional @relation(fields: [professionalId], references: [id])
+  dateTime         DateTime
+  endTime          DateTime
+  status           String   @default("CONFIRMED")
+  notifiedEmployee Boolean  @default(false)
+  priceAtBooking   Float?
+  reminded24h      Boolean  @default(false)
+  reminded1h       Boolean  @default(false)
+  notes            String?
+
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  cancelledAt  DateTime?
+  cancelReason String?
+}
+
+model WorkSchedule {
+  id             Int          @id @default(autoincrement())
+  professionalId Int
+  professional   Professional @relation(fields: [professionalId], references: [id])
+  dayOfWeek      Int
+  startTime      String
+  endTime        String
+  isWorking      Boolean      @default(true)
+
+  @@unique([professionalId, dayOfWeek])
+}
+
+model ConversationLog {
+  id       Int      @id @default(autoincrement())
+  phone    String
+  role     String
+  content  String
+  metadata String?
+
+  createdAt DateTime @default(now())
+}
+
+model AdminUser {
+  id    Int    @id @default(autoincrement())
+  phone String @unique
+  role  String
+  name  String
+}
+
+model InstagramClient {
+  id        Int      @id @default(autoincrement())
+  igsid     String   @unique
+  phone     String?
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

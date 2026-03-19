@@ -1,6 +1,7 @@
 import { availabilityFunctionDeclarations, executeAvailabilityFunction } from './availability';
 import { schedulingFunctionDeclarations, executeSchedulingFunction } from './scheduling';
 import { adminFunctionDeclarations, executeAdminFunction } from './admin';
+import { professionalFunctionDeclarations, executeProfessionalFunction } from './professional-funcs';
 
 /**
  * Todas as funcoes disponiveis para clientes
@@ -11,7 +12,7 @@ export const clientFunctionDeclarations = [
 ];
 
 /**
- * Todas as funcoes disponiveis para admins (cliente + admin)
+ * Todas as funcoes disponiveis para admins (cliente + admin + bloqueio)
  */
 export const adminAllFunctionDeclarations = [
   ...availabilityFunctionDeclarations,
@@ -20,9 +21,27 @@ export const adminAllFunctionDeclarations = [
 ];
 
 /**
+ * Funcoes disponiveis para profissionais (agenda pessoal + disponibilidade basica)
+ */
+export const professionalAllFunctionDeclarations = [
+  ...professionalFunctionDeclarations,
+  ...availabilityFunctionDeclarations,
+];
+
+/**
  * Executa qualquer funcao pelo nome
  */
-export async function executeFunction(name: string, args: Record<string, any>): Promise<any> {
+export async function executeFunction(
+  name: string,
+  args: Record<string, any>,
+  professionalId?: number
+): Promise<any> {
+  // Funcoes de profissional (precisam do professionalId)
+  if (['my_schedule', 'my_week_schedule'].includes(name)) {
+    if (!professionalId) return { error: 'Função disponível apenas para profissionais' };
+    return executeProfessionalFunction(name, args, professionalId);
+  }
+
   // Funcoes de disponibilidade
   if (['list_services', 'check_service_professionals', 'check_availability', 'list_available_slots'].includes(name)) {
     return executeAvailabilityFunction(name, args);
@@ -34,7 +53,7 @@ export async function executeFunction(name: string, args: Record<string, any>): 
   }
 
   // Funcoes admin
-  if (['query_revenue', 'query_appointment_stats', 'query_top_performers', 'query_client_stats', 'query_client_history', 'query_day_appointments'].includes(name)) {
+  if (['query_revenue', 'query_appointment_stats', 'query_top_performers', 'query_client_stats', 'query_client_history', 'query_day_appointments', 'block_time_slot', 'unblock_time_slot'].includes(name)) {
     return executeAdminFunction(name, args);
   }
 

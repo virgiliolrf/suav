@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: suav-db
+    environment:
+      POSTGRES_USER: suav
+      POSTGRES_PASSWORD: suav123
+      POSTGRES_DB: suav_bot
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  pgdata:

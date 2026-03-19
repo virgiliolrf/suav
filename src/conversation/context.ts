@@ -79,3 +79,36 @@ export async function getAdminInfo(phone: string): Promise<{
 
   return { name: admin.name, role: admin.role };
 }
+
+/**
+ * Verifica se um telefone é de uma profissional
+ */
+export async function isProfessionalPhone(phone: string): Promise<{
+  id: number;
+  name: string;
+} | null> {
+  const normalized = normalizePhone(phone);
+
+  const professionals = await prisma.professional.findMany({
+    where: { active: true, phone: { not: null } },
+  });
+
+  for (const prof of professionals) {
+    if (!prof.phone) continue;
+    const profNorm = normalizePhone(prof.phone);
+
+    if (normalized === profNorm) return { id: prof.id, name: prof.name };
+
+    const phoneLocal = normalized.startsWith('55') ? normalized.slice(2) : normalized;
+    const profLocal = profNorm.startsWith('55') ? profNorm.slice(2) : profNorm;
+    if (phoneLocal === profLocal) return { id: prof.id, name: prof.name };
+
+    if (phoneLocal.length === 11 && profLocal.length === 10) {
+      if (phoneLocal.slice(0, 2) + phoneLocal.slice(3) === profLocal) return { id: prof.id, name: prof.name };
+    } else if (phoneLocal.length === 10 && profLocal.length === 11) {
+      if (profLocal.slice(0, 2) + profLocal.slice(3) === phoneLocal) return { id: prof.id, name: prof.name };
+    }
+  }
+
+  return null;
+}

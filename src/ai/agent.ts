@@ -1,6 +1,6 @@
 import { genai, MODEL_NAME } from './gemini';
-import { getClientSystemPrompt, getAdminSystemPrompt } from './prompts';
-import { clientFunctionDeclarations, adminAllFunctionDeclarations, executeFunction } from './functions';
+import { getClientSystemPrompt, getAdminSystemPrompt, getProfessionalSystemPrompt } from './prompts';
+import { clientFunctionDeclarations, adminAllFunctionDeclarations, professionalAllFunctionDeclarations, executeFunction } from './functions';
 import { logger } from '../utils/logger';
 import type { Content, Part } from '@google/genai';
 import type { ChannelType } from '../channels/types';
@@ -34,19 +34,44 @@ async function callGeminiWithRetry(params: any): Promise<any> {
 export async function processMessage(params: {
   userMessage: string;
   conversationHistory: { role: string; content: string }[];
-  isAdmin: boolean;
+  role?: 'admin' | 'professional' | 'client';
   clientPhone: string;
   channel?: ChannelType;
   clientName?: string;
   preferredProfessional?: string;
   igsid?: string;
+  adminName?: string;
+  professionalId?: number;
+  professionalName?: string;
+  // Backward compatibility
+  isAdmin?: boolean;
 }): Promise<string> {
-  const { userMessage, conversationHistory, isAdmin, clientPhone, channel = 'whatsapp', clientName, preferredProfessional, igsid } = params;
+  const {
+    userMessage, conversationHistory, clientPhone,
+    channel = 'whatsapp', clientName, preferredProfessional, igsid,
+    adminName, professionalId, professionalName,
+  } = params;
 
-  const systemPrompt = isAdmin
-    ? getAdminSystemPrompt()
-    : getClientSystemPrompt(channel, !!clientPhone, clientName, preferredProfessional);
-  const functionDeclarations = isAdmin ? adminAllFunctionDeclarations : clientFunctionDeclarations;
+  // Determinar role (backward compat)
+  const role = params.role || (params.isAdmin ? 'admin' : 'client');
+
+  // Selecionar prompt e funções baseado no papel
+  let systemPrompt: string;
+  let functionDeclarations: any[];
+
+  switch (role) {
+    case 'admin':
+      systemPrompt = getAdminSystemPrompt(adminName);
+      functionDeclarations = adminAllFunctionDeclarations;
+      break;
+    case 'professional':
+      systemPrompt = getProfessionalSystemPrompt(professionalName || 'Profissional');
+      functionDeclarations = professionalAllFunctionDeclarations;
+      break;
+    default:
+      systemPrompt = getClientSystemPrompt(channel, !!clientPhone, clientName, preferredProfessional);
+      functionDeclarations = clientFunctionDeclarations;
+  }
 
   // Montar historico de conversa no formato do Gemini
   const contents: Content[] = [];
@@ -104,14 +129,18 @@ export async function processMessage(params: {
           args,
           channel,
           phone: clientPhone || '(instagram)',
+          role,
         });
 
         // Injetar telefone da cliente em funcoes que precisam
         const enrichedArgs = { ...args };
         if (name === 'book_appointment' || name === 'get_client_appointments' || name === 'save_client_name') {
-          // WhatsApp: SEMPRE usar o telefone real (Gemini pode inventar um)
-          // Instagram: usar o que o Gemini passou (fornecido pela cliente)
-          if (channel === 'whatsapp' && clientPhone) {
+          // Admin: NÃO forçar o telefone da admin como cliente
+          // O Gemini deve usar o telefone que a admin forneceu
+          if (role === 'admin') {
+            // Não sobrescreve — usa o que o Gemini passou
+          } else if (channel === 'whatsapp' && clientPhone) {
+            // Cliente WhatsApp: SEMPRE usar o telefone real
             enrichedArgs.client_phone = clientPhone;
           } else if (!enrichedArgs.client_phone && clientPhone) {
             enrichedArgs.client_phone = clientPhone;
@@ -125,7 +154,7 @@ export async function processMessage(params: {
 
         let result: any;
         try {
-          result = await executeFunction(name, enrichedArgs);
+          result = await executeFunction(name, enrichedArgs, professionalId);
         } catch (error) {
           logger.error({ msg: 'Erro ao executar funcao', function: name, error });
           result = { error: 'Erro interno ao processar. Tente novamente.' };
@@ -176,11 +205,11 @@ export async function processMessage(params: {
     const finalText = response.candidates?.[0]?.content?.parts
       ?.filter((part: any) => part.text)
       .map((part: any) => part.text)
-      .join('') || 'Desculpa, nao consegui processar sua mensagem. Pode repetir?';
+      .join('') || 'Desculpa, não consegui processar sua mensagem. Pode repetir?';
 
     return finalText;
   } catch (error) {
     logger.error({ msg: 'Erro no Gemini', error });
-    return 'Ops, tive um probleminha tecnico. Pode tentar de novo em alguns segundos?';
+    return 'Ops, tive um probleminha técnico. Pode tentar de novo em alguns segundos?';
   }
 }

@@ -1,5 +1,7 @@
 import { Type } from '@google/genai';
 import { queryRevenue, queryAppointmentStats, queryTopPerformers, queryClientStats, getClientHistory, queryDayAppointments } from '../../services/admin-query';
+import { blockTimeSlot, unblockTimeSlot } from '../../services/professional';
+import { findProfessional } from '../../services/catalog';
 import { format, startOfMonth, startOfWeek, endOfDay } from 'date-fns';
 
 /**
@@ -126,6 +128,50 @@ export const adminFunctionDeclarations = [
       required: ['date'],
     },
   },
+  {
+    name: 'block_time_slot',
+    description: 'Bloqueia um horário de uma profissional. Use quando a gerente/dona disser que precisa bloquear um horário (agendamento externo, reunião, intervalo, etc). Impede que clientes agendem nesse horário.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        professional_name: {
+          type: Type.STRING,
+          description: 'Nome da profissional para bloquear',
+        },
+        date: {
+          type: Type.STRING,
+          description: 'Data no formato YYYY-MM-DD',
+        },
+        time: {
+          type: Type.STRING,
+          description: 'Horário no formato HH:mm',
+        },
+        duration_minutes: {
+          type: Type.NUMBER,
+          description: 'Duração do bloqueio em minutos (padrão: 60)',
+        },
+        reason: {
+          type: Type.STRING,
+          description: 'Motivo do bloqueio (opcional)',
+        },
+      },
+      required: ['professional_name', 'date', 'time'],
+    },
+  },
+  {
+    name: 'unblock_time_slot',
+    description: 'Remove o bloqueio de um horário pelo ID. Use query_day_appointments para encontrar o ID do bloqueio.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        block_id: {
+          type: Type.NUMBER,
+          description: 'ID do bloqueio a remover',
+        },
+      },
+      required: ['block_id'],
+    },
+  },
 ];
 
 /**
@@ -172,6 +218,23 @@ export async function executeAdminFunction(
         status: args.status,
         professionalName: args.professional_name,
       });
+
+    case 'block_time_slot': {
+      const professional = await findProfessional(args.professional_name);
+      if (!professional) {
+        return { success: false, message: `Profissional "${args.professional_name}" não encontrada` };
+      }
+      return blockTimeSlot({
+        professionalId: professional.id,
+        date: args.date,
+        time: args.time,
+        durationMinutes: args.duration_minutes || 60,
+        reason: args.reason,
+      });
+    }
+
+    case 'unblock_time_slot':
+      return unblockTimeSlot(args.block_id);
 
     default:
       return { error: `Funcao admin desconhecida: ${name}` };

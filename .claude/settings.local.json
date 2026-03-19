@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsx:*)",
+      "Bash(npx tsx -e \":*)",
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(find /c/Users/Virgilio/Desktop/projetos/suav/src -type f \\\\\\(-name *.ts -o -name *.json \\\\\\))",
+      "Bash(find /c/Users/Virgilio/Desktop/projetos/suav -type d -not -path */node_modules/* -not -path */.git/* -not -path */auth_state/*)",
+      "Bash(cat:*)"
+    ]
+  }
+}
