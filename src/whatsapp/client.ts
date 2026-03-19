@@ -84,9 +84,15 @@ export async function initWhatsApp(
 
     if (qr) {
       currentQR = qr;
+      const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(qr)}`;
       console.log('\n========================================');
       console.log('  ESCANEIE O QR CODE COM O WHATSAPP');
-      console.log('  Ou acesse no navegador: porta ' + QR_PORT);
+      console.log('========================================');
+      console.log('');
+      console.log('  CLIQUE NO LINK ABAIXO para ver o QR:');
+      console.log('');
+      console.log(qrUrl);
+      console.log('');
       console.log('========================================\n');
       qrcodeTerminal.generate(qr, { small: true });
       startQRServer();
