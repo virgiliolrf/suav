@@ -184,7 +184,7 @@ export async function sendStartupNotification(): Promise<void> {
   }
 
   const messageForProfessionals = [
-    `Oi! Aqui é o assistente virtual da SUAV 💅`,
+    `Oii! Aqui é a Mari, assistente virtual da SUAV 💅🌸`,
     ``,
     `A partir de agora, vou te avisar pelo WhatsApp sobre:`,
     ``,
@@ -194,7 +194,7 @@ export async function sendStartupNotification(): Promise<void> {
     `⏰ *Lembretes* — 24h e 1h antes de cada atendimento`,
     ``,
     `Você não precisa fazer nada, as notificações chegam automaticamente!`,
-    `Qualquer dúvida, fale com a gerente. Bom trabalho! 😊`,
+    `Qualquer dúvida, fale com a gerente. Bom trabalho! 💖`,
   ].join('\n');
 
   // Buscar todas as profissionais com telefone
@@ -221,9 +221,9 @@ export async function sendStartupNotification(): Promise<void> {
 
   // Atualizar mensagem admin com contagem real
   const adminMessage = [
-    `Bot SUAV ativo e funcionando! 🤖✨`,
+    `Oii! Aqui é a Mari, sua assistente virtual 💅🌸`,
     ``,
-    `O assistente virtual está online e pronto para:`,
+    `Estou online e pronta para:`,
     ``,
     `📱 *Atender clientes* — via WhatsApp (e Instagram se configurado)`,
     `📋 *Agendar horários* — automaticamente, verificando disponibilidade`,
@@ -233,6 +233,8 @@ export async function sendStartupNotification(): Promise<void> {
     `📊 *Relatório diário* — enviado automaticamente no fim do expediente`,
     ``,
     `✅ ${sentCount} profissionais notificadas com sucesso.`,
+    ``,
+    `Você pode me perguntar sobre faturamento, agendamentos, ranking de profissionais e muito mais! 💖`,
   ].join('\n');
 
   // Enviar para admins (gerente + dona)
