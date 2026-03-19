@@ -109,7 +109,11 @@ export async function processMessage(params: {
         // Injetar telefone da cliente em funcoes que precisam
         const enrichedArgs = { ...args };
         if (name === 'book_appointment' || name === 'get_client_appointments') {
-          if (!enrichedArgs.client_phone && clientPhone) {
+          // WhatsApp: SEMPRE usar o telefone real (Gemini pode inventar um)
+          // Instagram: usar o que o Gemini passou (fornecido pela cliente)
+          if (channel === 'whatsapp' && clientPhone) {
+            enrichedArgs.client_phone = clientPhone;
+          } else if (!enrichedArgs.client_phone && clientPhone) {
             enrichedArgs.client_phone = clientPhone;
           }
         }
