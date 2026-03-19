@@ -29,7 +29,7 @@ export async function executeFunction(name: string, args: Record<string, any>): 
   }
 
   // Funcoes de agendamento
-  if (['book_appointment', 'get_client_appointments', 'cancel_appointment', 'reschedule_appointment'].includes(name)) {
+  if (['book_appointment', 'get_client_appointments', 'cancel_appointment', 'reschedule_appointment', 'save_client_name'].includes(name)) {
     return executeSchedulingFunction(name, args);
   }
 

@@ -2,6 +2,7 @@ import { Type } from '@google/genai';
 import { PrismaClient } from '@prisma/client';
 import { bookAppointment, bookAppointmentByName, cancelAppointment, rescheduleAppointment, getClientAppointments } from '../../services/appointment';
 import { notifyProfessional, notifyCancellation, notifyReschedule } from '../../services/notification';
+import { saveClientName } from '../../services/client';
 import { normalizePhone } from '../../utils/phone';
 import { logger } from '../../utils/logger';
 
@@ -111,6 +112,24 @@ export const schedulingFunctionDeclarations = [
       required: ['appointment_id', 'new_date', 'new_time'],
     },
   },
+  {
+    name: 'save_client_name',
+    description: 'Salva o nome da cliente no cadastro, vinculado ao telefone. Chame SEMPRE que a cliente disser o nome dela pela primeira vez na conversa. Isso faz com que nas proximas conversas voce ja saiba o nome dela.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        client_phone: {
+          type: Type.STRING,
+          description: 'Telefone da cliente',
+        },
+        client_name: {
+          type: Type.STRING,
+          description: 'Nome da cliente como ela disse',
+        },
+      },
+      required: ['client_phone', 'client_name'],
+    },
+  },
 ];
 
 /**
@@ -203,6 +222,11 @@ export async function executeSchedulingFunction(
       }
 
       return result;
+    }
+
+    case 'save_client_name': {
+      const phone = normalizePhone(args.client_phone);
+      return saveClientName(phone, args.client_name);
     }
 
     default:

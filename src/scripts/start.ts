@@ -39,13 +39,18 @@ async function main() {
     const managerPhone = process.env.ADMIN_MANAGER_PHONE;
     const managerName = process.env.ADMIN_MANAGER_NAME || 'Gerente';
 
+    console.log(`[start] Env ADMIN_OWNER_PHONE: "${ownerPhone || '(vazio)'}"`);
+    console.log(`[start] Env ADMIN_MANAGER_PHONE: "${managerPhone || '(vazio)'}"`);
+
     if (ownerPhone) {
       await prisma.adminUser.upsert({
         where: { phone: ownerPhone },
         create: { phone: ownerPhone, role: 'owner', name: ownerName },
         update: { name: ownerName, role: 'owner' },
       });
-      console.log(`[start] Admin (dona) garantida: ${ownerPhone}`);
+      console.log(`[start] Admin (dona) garantida no banco: ${ownerPhone}`);
+    } else {
+      console.log('[start] AVISO: ADMIN_OWNER_PHONE nao configurada!');
     }
 
     if (managerPhone) {
@@ -54,7 +59,16 @@ async function main() {
         create: { phone: managerPhone, role: 'manager', name: managerName },
         update: { name: managerName, role: 'manager' },
       });
-      console.log(`[start] Admin (gerente) garantida: ${managerPhone}`);
+      console.log(`[start] Admin (gerente) garantida no banco: ${managerPhone}`);
+    } else {
+      console.log('[start] AVISO: ADMIN_MANAGER_PHONE nao configurada!');
+    }
+
+    // Listar admins no banco pra confirmar
+    const allAdmins = await prisma.adminUser.findMany();
+    console.log(`[start] Total de admins no banco: ${allAdmins.length}`);
+    for (const adm of allAdmins) {
+      console.log(`[start]   - ${adm.role}: ${adm.phone} (${adm.name})`);
     }
 
     // === GARANTIR TELEFONES DAS PROFISSIONAIS NO BANCO ===
