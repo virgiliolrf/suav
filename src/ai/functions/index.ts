@@ -53,7 +53,7 @@ export async function executeFunction(
   }
 
   // Funcoes admin
-  if (['query_revenue', 'query_appointment_stats', 'query_top_performers', 'query_client_stats', 'query_client_history', 'query_day_appointments', 'block_time_slot', 'unblock_time_slot'].includes(name)) {
+  if (['query_revenue', 'query_appointment_stats', 'query_top_performers', 'query_client_stats', 'query_client_history', 'query_day_appointments', 'block_time_slot', 'unblock_time_slot', 'update_service_price', 'toggle_professional_status', 'update_work_schedule', 'update_appointment_status', 'list_professionals', 'search_clients', 'update_client_info'].includes(name)) {
     return executeAdminFunction(name, args);
   }
 
