@@ -1,5 +1,5 @@
 import { Type } from '@google/genai';
-import { queryRevenue, queryAppointmentStats, queryTopPerformers, queryClientStats, getClientHistory } from '../../services/admin-query';
+import { queryRevenue, queryAppointmentStats, queryTopPerformers, queryClientStats, getClientHistory, queryDayAppointments } from '../../services/admin-query';
 import { format, startOfMonth, startOfWeek, endOfDay } from 'date-fns';
 
 /**
@@ -104,6 +104,28 @@ export const adminFunctionDeclarations = [
       required: ['client_phone'],
     },
   },
+  {
+    name: 'query_day_appointments',
+    description: 'Lista TODOS os agendamentos de um dia especifico com detalhes completos: horario, profissional, servico, cliente, telefone, valor e status. Use quando o admin perguntar "quais agendamentos de hoje", "agenda de hoje", "agenda de amanha", "agendamentos do dia X".',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        date: {
+          type: Type.STRING,
+          description: 'Data no formato YYYY-MM-DD. Use a data de hoje se o admin disser "hoje".',
+        },
+        status: {
+          type: Type.STRING,
+          description: 'Filtrar por status: "CONFIRMED", "CANCELLED", "COMPLETED". Se nao informar, mostra todos.',
+        },
+        professional_name: {
+          type: Type.STRING,
+          description: 'Filtrar por profissional (opcional)',
+        },
+      },
+      required: ['date'],
+    },
+  },
 ];
 
 /**
@@ -143,6 +165,13 @@ export async function executeAdminFunction(
 
     case 'query_client_history':
       return getClientHistory(args.client_phone);
+
+    case 'query_day_appointments':
+      return queryDayAppointments({
+        date: args.date,
+        status: args.status,
+        professionalName: args.professional_name,
+      });
 
     default:
       return { error: `Funcao admin desconhecida: ${name}` };

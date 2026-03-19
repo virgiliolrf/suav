@@ -1,5 +1,7 @@
 import { PrismaClient } from '@prisma/client';
-import { formatDateTimeBR } from '../utils/date';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+import { formatDateTimeBR, formatTime } from '../utils/date';
 import { normalizePhone, formatPhone } from '../utils/phone';
 
 const prisma = new PrismaClient();
@@ -271,5 +273,76 @@ export async function queryClientStats(params: {
     topClients: Array.from(clientCounts.values())
       .sort((a, b) => b.count - a.count)
       .slice(0, 10),
+  };
+}
+
+/**
+ * Lista todos os agendamentos de um dia com detalhes completos
+ * Formato tabela para a gerente/dona
+ */
+export async function queryDayAppointments(params: {
+  date: string; // YYYY-MM-DD
+  status?: string;
+  professionalName?: string;
+}): Promise<{
+  date: string;
+  dateFormatted: string;
+  total: number;
+  totalRevenue: number;
+  appointments: {
+    horario: string;
+    profissional: string;
+    servico: string;
+    cliente: string;
+    telefone: string;
+    valor: string;
+    status: string;
+  }[];
+}> {
+  const start = new Date(params.date + 'T00:00:00');
+  const end = new Date(params.date + 'T23:59:59');
+  const dateFormatted = format(start, "EEEE, d 'de' MMMM", { locale: ptBR });
+
+  const where: any = {
+    dateTime: { gte: start, lte: end },
+  };
+
+  if (params.status) {
+    where.status = params.status;
+  }
+
+  const appointments = await prisma.appointment.findMany({
+    where,
+    include: {
+      service: true,
+      professional: true,
+      client: true,
+    },
+    orderBy: { dateTime: 'asc' },
+  });
+
+  let filtered = appointments;
+  if (params.professionalName) {
+    const name = params.professionalName.toLowerCase();
+    filtered = appointments.filter(a => a.professional.name.toLowerCase().includes(name));
+  }
+
+  const confirmed = filtered.filter(a => a.status === 'CONFIRMED' || a.status === 'COMPLETED');
+  const totalRevenue = confirmed.reduce((sum, a) => sum + (a.priceAtBooking ?? a.service.price), 0);
+
+  return {
+    date: params.date,
+    dateFormatted,
+    total: filtered.length,
+    totalRevenue,
+    appointments: filtered.map(apt => ({
+      horario: formatTime(apt.dateTime) + ' - ' + formatTime(apt.endTime),
+      profissional: apt.professional.name,
+      servico: apt.service.name,
+      cliente: apt.client.name || 'Sem nome',
+      telefone: formatPhone(apt.client.phone),
+      valor: 'R$ ' + (apt.priceAtBooking ?? apt.service.price).toFixed(2).replace('.', ','),
+      status: apt.status === 'CONFIRMED' ? '✅' : apt.status === 'CANCELLED' ? '❌' : apt.status === 'COMPLETED' ? '✔️' : apt.status,
+    })),
   };
 }

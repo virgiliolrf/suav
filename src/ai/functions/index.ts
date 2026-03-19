@@ -34,7 +34,7 @@ export async function executeFunction(name: string, args: Record<string, any>): 
   }
 
   // Funcoes admin
-  if (['query_revenue', 'query_appointment_stats', 'query_top_performers', 'query_client_stats', 'query_client_history'].includes(name)) {
+  if (['query_revenue', 'query_appointment_stats', 'query_top_performers', 'query_client_stats', 'query_client_history', 'query_day_appointments'].includes(name)) {
     return executeAdminFunction(name, args);
   }
 
