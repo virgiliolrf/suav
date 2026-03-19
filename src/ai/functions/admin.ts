@@ -266,12 +266,11 @@ export async function executeAdminFunction(
     // === CRUD FUNCTIONS ===
 
     case 'update_service_price': {
-      const services = await prisma.service.findMany({
-        where: {
-          name: { contains: args.service_name, mode: 'insensitive' },
-          active: true,
-        },
-      });
+      const searchTerm = args.service_name.toLowerCase();
+      const allServices = await prisma.service.findMany({ where: { active: true } });
+      const services = allServices.filter(s =>
+        s.name.toLowerCase().includes(searchTerm) || s.normalizedName.includes(searchTerm)
+      );
 
       if (services.length === 0) {
         return { success: false, message: `Serviço "${args.service_name}" não encontrado` };
@@ -395,26 +394,25 @@ export async function executeAdminFunction(
         where,
         include: {
           services: { include: { service: true } },
-          workSchedule: { orderBy: { dayOfWeek: 'asc' } },
-          _count: { select: { appointments: true } },
+          workSchedule: true,
         },
         orderBy: { name: 'asc' },
       });
 
-      return professionals.map(p => ({
-        id: p.id,
-        name: p.name,
-        phone: p.phone || 'sem telefone',
-        active: p.active,
-        totalAppointments: p._count.appointments,
-        services: p.services.map(ps => ps.service.name).slice(0, 5),
-        workDays: p.workSchedule
-          .filter(ws => ws.isWorking)
-          .map(ws => {
-            const days = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-            return `${days[ws.dayOfWeek]} ${ws.startTime}-${ws.endTime}`;
-          }),
-      }));
+      return {
+        total: professionals.length,
+        professionals: professionals.map(p => ({
+          name: p.name,
+          phone: p.phone || 'sem telefone',
+          active: p.active,
+          qtdServicos: p.services.length,
+          dias: p.workSchedule
+            .filter(ws => ws.isWorking)
+            .sort((a, b) => a.dayOfWeek - b.dayOfWeek)
+            .map(ws => ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'][ws.dayOfWeek])
+            .join(', '),
+        })),
+      };
     }
 
     case 'search_clients': {
@@ -424,17 +422,16 @@ export async function executeAdminFunction(
       let clients;
       if (isPhone) {
         const normalized = normalizePhone(query);
-        clients = await prisma.client.findMany({
-          where: { phone: { contains: normalized.slice(-8) } },
+        const allClients = await prisma.client.findMany({
           include: { _count: { select: { appointments: true } } },
-          take: 10,
         });
+        clients = allClients.filter(c => c.phone.includes(normalized.slice(-8))).slice(0, 10);
       } else {
-        clients = await prisma.client.findMany({
-          where: { name: { contains: query, mode: 'insensitive' } },
+        const searchLower = query.toLowerCase();
+        const allClients = await prisma.client.findMany({
           include: { _count: { select: { appointments: true } } },
-          take: 10,
         });
+        clients = allClients.filter(c => c.name?.toLowerCase().includes(searchLower)).slice(0, 10);
       }
 
       if (clients.length === 0) {
