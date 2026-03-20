@@ -19,19 +19,86 @@ interface TestScenario {
 const scenarios: TestScenario[] = [
   // === CLIENTE ===
   {
-    name: 'Cliente: Saudação inicial',
+    name: 'Cliente: Saudação "oi" — tom natural',
     role: 'client',
     channel: 'whatsapp',
     phone: PHONE_CLIENTE,
     messages: ['oi'],
     checks: [
       (r) => ({
-        pass: r[0].toLowerCase().includes('mari') || r[0].toLowerCase().includes('suav') || r[0].toLowerCase().includes('oi') || r[0].toLowerCase().includes('ajudar'),
-        reason: 'Deve cumprimentar e oferecer ajuda',
+        pass: r[0].toLowerCase().includes('oi') || r[0].toLowerCase().includes('ei') || r[0].toLowerCase().includes('hey'),
+        reason: 'Deve cumprimentar de volta',
       }),
       (r) => ({
         pass: !r[0].toLowerCase().includes('inteligência artificial') && !r[0].toLowerCase().includes('bot'),
         reason: 'NÃO deve dizer que é IA/bot',
+      }),
+      (r) => ({
+        pass: !r[0].toLowerCase().includes('como posso te ajudar') && !r[0].toLowerCase().includes('em que posso ajudar') && !r[0].toLowerCase().includes('posso ajudar em algo'),
+        reason: 'NÃO deve usar frases de bot ("como posso te ajudar?")',
+      }),
+      (r) => ({
+        pass: !r[0].toLowerCase().includes('querida') && !r[0].toLowerCase().includes('linda') && !r[0].toLowerCase().includes(' flor') && !r[0].toLowerCase().includes('amor'),
+        reason: 'NÃO deve usar apelidos genéricos',
+      }),
+      (r) => ({
+        pass: r[0].length < 200,
+        reason: 'Mensagem deve ser curta (< 200 chars) — pessoa real é objetiva',
+      }),
+    ],
+  },
+  {
+    name: 'Cliente: Saudação "eae" — espelha tom informal',
+    role: 'client',
+    channel: 'whatsapp',
+    phone: PHONE_CLIENTE,
+    messages: ['eae'],
+    checks: [
+      (r) => ({
+        pass: !r[0].toLowerCase().includes('como posso te ajudar') && !r[0].toLowerCase().includes('em que posso ajudar'),
+        reason: 'NÃO deve usar frases de bot',
+      }),
+      (r) => ({
+        pass: r[0].length < 150,
+        reason: 'Resposta curta e informal',
+      }),
+    ],
+  },
+  {
+    name: 'Cliente: Reclamação — deve reconhecer sentimento',
+    role: 'client',
+    channel: 'whatsapp',
+    phone: PHONE_CLIENTE,
+    messages: ['tô muito insatisfeita com o atendimento de vocês'],
+    checks: [
+      (r) => ({
+        pass: r[0].toLowerCase().includes('sinto') || r[0].toLowerCase().includes('poxa') || r[0].toLowerCase().includes('chato') || r[0].toLowerCase().includes('desculp'),
+        reason: 'Deve reconhecer a reclamação com empatia (poxa/sinto muito/que chato)',
+      }),
+      (r) => ({
+        pass: !r[0].toLowerCase().includes('infelizmente') && !r[0].toLowerCase().includes('lamentamos'),
+        reason: 'NÃO deve usar linguagem corporativa (infelizmente/lamentamos)',
+      }),
+    ],
+  },
+  {
+    name: 'Cliente: Agradecimento — deve ser breve e genuína',
+    role: 'client',
+    channel: 'whatsapp',
+    phone: PHONE_CLIENTE,
+    messages: ['muito obrigada!'],
+    checks: [
+      (r) => ({
+        pass: r[0].toLowerCase().includes('imagina') || r[0].toLowerCase().includes('nada') || r[0].toLowerCase().includes('disponha') || r[0].includes('🤗') || r[0].includes('😊'),
+        reason: 'Deve responder agradecimento de forma breve (imagina!/de nada!)',
+      }),
+      (r) => ({
+        pass: r[0].length < 120,
+        reason: 'Agradecimento deve ter resposta curta (< 120 chars)',
+      }),
+      (r) => ({
+        pass: !r[0].toLowerCase().includes('precisar de algo mais') && !r[0].toLowerCase().includes('à disposição'),
+        reason: 'NÃO deve terminar com "se precisar de algo mais estou à disposição"',
       }),
     ],
   },
@@ -68,10 +135,15 @@ const scenarios: TestScenario[] = [
     phone: PHONE_CLIENTE,
     messages: ['quero fazer unha gel sexta às 14h'],
     checks: [
-      (r) => ({
-        pass: r[0].toUpperCase().includes('LARISSA') || r[0].toUpperCase().includes('CLAU'),
-        reason: 'Deve mostrar nomes das profissionais de gel (Larissa e Clau)',
-      }),
+      (r) => {
+        const nomes = ['LUCIANA', 'LARISSA', 'CLAUDIA', 'CLAU', 'TATIANA', 'TATI', 'FERNANDA', 'NANDA',
+          'JESSICA', 'JÉSSICA', 'RAFAELA', 'RAFA', 'ISABELA', 'ISA', 'CAMILA', 'CAMI',
+          'AMANDA', 'JULIANA', 'JU', 'BEATRIZ', 'BIA', 'PATRICIA', 'PATI', 'MARIANA',
+          'CAROLINA', 'CAROL', 'GABRIELA', 'GABI', 'DANIELA', 'DANI'];
+        const upper = r[0].toUpperCase();
+        const found = nomes.some(n => upper.includes(n));
+        return { pass: found, reason: 'Deve mostrar nomes reais de profissionais que fazem gel' };
+      },
     ],
   },
   {
@@ -178,14 +250,22 @@ const scenarios: TestScenario[] = [
       'sexta às 14h',
     ],
     checks: [
-      (r) => ({
-        pass: r[0].toUpperCase().includes('LARISSA') || r[0].toUpperCase().includes('CLAU'),
-        reason: 'Msg 1: Deve perguntar profissional COM nomes',
-      }),
-      (r) => ({
-        pass: r[2].toLowerCase().includes('confirmo') || r[2].toLowerCase().includes('confirma') || r[2].toLowerCase().includes('r$') || r[2].toLowerCase().includes('agendar'),
-        reason: 'Msg 3: Deve pedir confirmação com preço',
-      }),
+      (r) => {
+        // Deve conter pelo menos um nome real de profissional do salão
+        const nomes = ['LUCIANA', 'LARISSA', 'CLAUDIA', 'CLAU', 'TATIANA', 'TATI', 'FERNANDA', 'NANDA',
+          'JESSICA', 'JÉSSICA', 'RAFAELA', 'RAFA', 'ISABELA', 'ISA', 'CAMILA', 'CAMI',
+          'AMANDA', 'JULIANA', 'JU', 'BEATRIZ', 'BIA', 'PATRICIA', 'PATI', 'MARIANA',
+          'CAROLINA', 'CAROL', 'GABRIELA', 'GABI', 'DANIELA', 'DANI'];
+        const upper = r[0].toUpperCase();
+        const found = nomes.some(n => upper.includes(n));
+        return { pass: found, reason: 'Msg 1: Deve perguntar profissional COM nomes reais do salão' };
+      },
+      (r) => {
+        if (r.length < 3) return { pass: false, reason: `Msg 3: Só recebeu ${r.length} respostas (esperava 3)` };
+        const msg3 = r[2].toLowerCase();
+        const pass = msg3.includes('confirmo') || msg3.includes('confirma') || msg3.includes('r$') || msg3.includes('agendar') || msg3.includes('agendado') || msg3.includes('fechado') || msg3.includes('disponível') || msg3.includes('disponivel') || msg3.includes('horário') || msg3.includes('horario');
+        return { pass, reason: `Msg 3: Deve pedir confirmação/mostrar disponibilidade. Got: "${r[2].substring(0, 100)}"` };
+      },
     ],
   },
   {

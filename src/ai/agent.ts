@@ -102,6 +102,9 @@ export async function processMessage(params: {
       },
     });
 
+    // Track which functions were called
+    const calledFunctions: string[] = [];
+
     // Loop de function calling
     let iterations = 0;
     while (iterations < MAX_FUNCTION_CALLS) {
@@ -123,6 +126,7 @@ export async function processMessage(params: {
         const name: string = fc.name;
         const args: Record<string, any> = fc.args || {};
 
+        calledFunctions.push(name);
         logger.info({
           msg: 'Gemini function call',
           function: name,
@@ -217,6 +221,56 @@ export async function processMessage(params: {
       .filter((part: any) => part.text && part.text.trim().length > 0)
       .map((part: any) => part.text)
       .join('');
+
+    // SAFETY NET: Se o modelo mencionou profissionais sem ter chamado check_service_professionals,
+    // provavelmente inventou nomes. Forçar a chamada da função e re-gerar resposta.
+    if (role === 'client' && finalText && !calledFunctions.includes('check_service_professionals')) {
+      const serviceKeywords = /\b(unha|gel|cabelo|corte|escova|progressiva|depila|manicure|pedicure|sobrancelha|cílio|cilios|extensão|alongamento|coloração|tintura|mechas|luzes|hidratação|botox|limpeza de pele|design|esmalt)\b/i;
+      const hasServiceMention = serviceKeywords.test(userMessage);
+      // Detecta padrão "temos a X e a Y" que indica nomes inventados
+      const hasNamePattern = /temos a \w+/i.test(finalText);
+
+      if (hasServiceMention && hasNamePattern) {
+        logger.warn({ msg: 'Detected hallucinated professional names — forcing check_service_professionals' });
+
+        // Extrair nome do serviço da mensagem
+        const serviceMatch = userMessage.match(serviceKeywords);
+        const serviceName = serviceMatch ? serviceMatch[0] : userMessage;
+
+        // Forçar a chamada da função
+        const result = await executeFunction('check_service_professionals', { service_name: serviceName });
+
+        // Re-gerar resposta com os dados reais
+        contents.push({
+          role: 'model',
+          parts: [{ functionCall: { name: 'check_service_professionals', args: { service_name: serviceName } } }],
+        });
+        contents.push({
+          role: 'user',
+          parts: [{ functionResponse: { name: 'check_service_professionals', response: result } }],
+        });
+
+        const correctedResponse = await callGeminiWithRetry({
+          model: MODEL_NAME,
+          contents,
+          config: {
+            systemInstruction: systemPrompt + '\n\nIMPORTANTE: Use SOMENTE os nomes de profissionais retornados pela função acima. NÃO invente nomes.',
+            temperature: 0.3,
+            tools: [{ functionDeclarations: functionDeclarations as any }],
+          },
+        });
+
+        const correctedParts = correctedResponse.candidates?.[0]?.content?.parts || [];
+        const correctedText = correctedParts
+          .filter((part: any) => part.text && part.text.trim().length > 0)
+          .map((part: any) => part.text)
+          .join('');
+
+        if (correctedText) {
+          finalText = correctedText;
+        }
+      }
+    }
 
     // Se Gemini retornou vazio apos function call, tentar mais uma vez
     if (!finalText && iterations > 0) {
