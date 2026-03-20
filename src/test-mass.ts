@@ -264,8 +264,7 @@ async function runScenario(scenario: Scenario): Promise<{ responses: string[]; e
   const phone = scenario.channel === 'instagram' ? `ig_test_${phoneCounter}` : nextPhone();
   const convId = getConversationId(scenario.channel, phone);
 
-  clearHistory(convId);
-  await prisma.conversationLog.deleteMany({ where: { phone: convId } });
+  await clearHistory(convId);
 
   const responses: string[] = [];
   let totalTime = 0;

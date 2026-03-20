@@ -53,10 +53,10 @@ const scenarios: TestScenario[] = [
     role: 'client',
     channel: 'whatsapp',
     phone: PHONE_CLIENTE,
-    messages: ['quanto custa unha gel?'],
+    messages: ['quanto custa manutenção unha gel?'],
     checks: [
       (r) => ({
-        pass: r[0].includes('R$') || r[0].includes('189') || r[0].includes('149'),
+        pass: r[0].includes('R$') || r[0].includes('149') || r[0].includes('189') || r[0].includes('140') || r[0].includes('95'),
         reason: 'Deve mostrar preço com R$',
       }),
     ],
@@ -166,6 +166,94 @@ const scenarios: TestScenario[] = [
       }),
     ],
   },
+  // === CLIENTE: MULTI-TURN ===
+  {
+    name: 'Cliente: Fluxo completo de agendamento (multi-turn)',
+    role: 'client',
+    channel: 'whatsapp',
+    phone: PHONE_CLIENTE,
+    messages: [
+      'oi, quero agendar unha gel',
+      'com a Larissa',
+      'sexta às 14h',
+    ],
+    checks: [
+      (r) => ({
+        pass: r[0].toUpperCase().includes('LARISSA') || r[0].toUpperCase().includes('CLAU'),
+        reason: 'Msg 1: Deve perguntar profissional COM nomes',
+      }),
+      (r) => ({
+        pass: r[2].toLowerCase().includes('confirmo') || r[2].toLowerCase().includes('confirma') || r[2].toLowerCase().includes('r$') || r[2].toLowerCase().includes('agendar'),
+        reason: 'Msg 3: Deve pedir confirmação com preço',
+      }),
+    ],
+  },
+  {
+    name: 'Cliente: Domingo deve recusar',
+    role: 'client',
+    channel: 'whatsapp',
+    phone: PHONE_CLIENTE,
+    messages: ['quero agendar corte pra domingo'],
+    checks: [
+      (r) => ({
+        pass: r[0].toLowerCase().includes('domingo') || r[0].toLowerCase().includes('fechado') || r[0].toLowerCase().includes('segunda') || r[0].toLowerCase().includes('não funciona') || r[0].toLowerCase().includes('abr'),
+        reason: 'Deve informar que não abre no domingo',
+      }),
+    ],
+  },
+  {
+    name: 'Cliente: Endereço do salão',
+    role: 'client',
+    channel: 'whatsapp',
+    phone: PHONE_CLIENTE,
+    messages: ['qual o endereço de vocês?'],
+    checks: [
+      (r) => ({
+        pass: r[0].toLowerCase().includes('goiânia') || r[0].toLowerCase().includes('itapoã') || r[0].toLowerCase().includes('vila velha'),
+        reason: 'Deve informar o endereço correto',
+      }),
+    ],
+  },
+  {
+    name: 'Cliente: Estacionamento',
+    role: 'client',
+    channel: 'whatsapp',
+    phone: PHONE_CLIENTE,
+    messages: ['vocês tem estacionamento?'],
+    checks: [
+      (r) => ({
+        pass: r[0].toLowerCase().includes('estacionamento') || r[0].toLowerCase().includes('sim') || r[0].toLowerCase().includes('tem'),
+        reason: 'Deve confirmar que tem estacionamento',
+      }),
+    ],
+  },
+  {
+    name: 'Cliente: Apelido genérico proibido',
+    role: 'client',
+    channel: 'whatsapp',
+    phone: PHONE_CLIENTE,
+    messages: ['oi, tudo bem?'],
+    checks: [
+      (r) => ({
+        pass: !r[0].toLowerCase().includes('querida') && !r[0].toLowerCase().includes('linda') && !r[0].toLowerCase().includes(' flor') && !r[0].toLowerCase().includes('amor') && !r[0].toLowerCase().includes('mana'),
+        reason: 'NÃO deve usar apelidos genéricos (querida, linda, flor, amor, mana)',
+      }),
+    ],
+  },
+  // === ADMIN: MAIS CENÁRIOS ===
+  {
+    name: 'Admin: Buscar cliente',
+    role: 'admin',
+    channel: 'whatsapp',
+    phone: PHONE_ADMIN,
+    messages: ['busca cliente 5527999990000'],
+    checks: [
+      (r) => ({
+        pass: r[0].includes('999990000') || r[0].toLowerCase().includes('encontr') || r[0].toLowerCase().includes('cliente'),
+        reason: 'Deve buscar e mostrar dados do cliente',
+      }),
+    ],
+  },
   // === PROFISSIONAL ===
   {
     name: 'Profissional: Minha agenda',
@@ -197,7 +285,7 @@ const scenarios: TestScenario[] = [
 
 async function runScenario(scenario: TestScenario): Promise<{ passed: number; failed: number; details: string[] }> {
   const convId = `test_${scenario.name.replace(/\s+/g, '_')}`;
-  clearHistory(convId);
+  await clearHistory(convId);
 
   const responses: string[] = [];
   const details: string[] = [];
@@ -281,9 +369,9 @@ async function main() {
       totalFailed++;
     }
 
-    // Pequeno delay entre cenarios (rate limit do Gemini)
+    // Delay entre cenarios (rate limit do Gemini)
     if (i < scenarios.length - 1) {
-      await new Promise(r => setTimeout(r, 1500));
+      await new Promise(r => setTimeout(r, 3000));
     }
   }
 

@@ -88,10 +88,15 @@ export async function getHistory(phone: string): Promise<ConversationEntry[]> {
 }
 
 /**
- * Limpa historico de conversa
+ * Limpa historico de conversa (cache e banco)
  */
-export function clearHistory(phone: string): void {
+export async function clearHistory(phone: string): Promise<void> {
   conversations.delete(phone);
+  try {
+    await prisma.conversationLog.deleteMany({ where: { phone } });
+  } catch {
+    // Ignora erro se nao existir
+  }
 }
 
 /**

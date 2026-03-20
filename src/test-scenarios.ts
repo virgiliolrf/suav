@@ -152,8 +152,7 @@ async function runScenario(scenario: Scenario): Promise<{ response: string; elap
   const convId = getConversationId(scenario.channel, scenario.phone);
 
   // Limpar cache E banco
-  clearHistory(convId);
-  await prisma.conversationLog.deleteMany({ where: { phone: convId } });
+  await clearHistory(convId);
 
   let lastResponse = '';
   let totalTime = 0;

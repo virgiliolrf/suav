@@ -72,7 +72,7 @@ async function handleCommand(text: string): Promise<boolean> {
   if (text === '/admin') {
     currentRole = 'admin';
     currentPhone = PHONE_ADMIN;
-    clearHistory(getConvId());
+    await clearHistory(getConvId());
     console.log(`\n  \x1b[33m>> Modo ADMIN ativado\x1b[0m — telefone: ${PHONE_ADMIN}`);
     console.log(`  \x1b[33m>> Pergunte: faturamento, agenda, ranking, bloquear horário...\x1b[0m\n`);
     return true;
@@ -80,7 +80,7 @@ async function handleCommand(text: string): Promise<boolean> {
   if (text === '/profissional') {
     currentRole = 'professional';
     currentPhone = PHONE_PROFISSIONAL;
-    clearHistory(getConvId());
+    await clearHistory(getConvId());
     console.log(`\n  \x1b[95m>> Modo PROFISSIONAL ativado\x1b[0m — Larissa (${PHONE_PROFISSIONAL})`);
     console.log(`  \x1b[95m>> Pergunte: minha agenda, meus horários...\x1b[0m\n`);
     return true;
@@ -88,7 +88,7 @@ async function handleCommand(text: string): Promise<boolean> {
   if (text === '/cliente') {
     currentRole = 'client';
     currentPhone = PHONE_CLIENTE;
-    clearHistory(getConvId());
+    await clearHistory(getConvId());
     console.log(`\n  \x1b[36m>> Modo CLIENTE ativado\x1b[0m — telefone: ${PHONE_CLIENTE}\n`);
     return true;
   }
@@ -104,7 +104,7 @@ async function handleCommand(text: string): Promise<boolean> {
     return true;
   }
   if (text === '/limpar') {
-    clearHistory(getConvId());
+    await clearHistory(getConvId());
     console.log('\n  >> Histórico limpo!\n');
     return true;
   }

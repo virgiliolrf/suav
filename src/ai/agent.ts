@@ -95,7 +95,7 @@ export async function processMessage(params: {
       contents,
       config: {
         systemInstruction: systemPrompt,
-        temperature: 0.4,
+        temperature: 0.3,
         tools: [{
           functionDeclarations: functionDeclarations as any,
         }],
@@ -174,10 +174,14 @@ export async function processMessage(params: {
         });
       }
 
-      // Adicionar as chamadas de funcao e respostas ao historico
+      // Adicionar APENAS as function calls ao historico do modelo
+      // (descarta texto pre-funcao que pode conter dados inventados)
+      const modelParts = candidate.content.parts.filter(
+        (part: any) => !!part.functionCall
+      );
       contents.push({
         role: 'model',
-        parts: candidate.content.parts,
+        parts: modelParts,
       });
 
       contents.push({
@@ -191,7 +195,7 @@ export async function processMessage(params: {
         contents,
         config: {
           systemInstruction: systemPrompt,
-          temperature: 0.4,
+          temperature: 0.3,
           tools: [{
             functionDeclarations: functionDeclarations as any,
           }],
@@ -202,12 +206,41 @@ export async function processMessage(params: {
     }
 
     // Extrair resposta texto final
-    const finalText = response.candidates?.[0]?.content?.parts
-      ?.filter((part: any) => part.text)
-      .map((part: any) => part.text)
-      .join('') || 'Desculpa, não consegui processar sua mensagem. Pode repetir?';
+    let finalParts = response.candidates?.[0]?.content?.parts || [];
+    logger.debug({
+      msg: 'Final response parts',
+      partsCount: finalParts.length,
+      parts: JSON.stringify(finalParts).substring(0, 1000),
+    });
 
-    return finalText;
+    let finalText = finalParts
+      .filter((part: any) => part.text && part.text.trim().length > 0)
+      .map((part: any) => part.text)
+      .join('');
+
+    // Se Gemini retornou vazio apos function call, tentar mais uma vez
+    if (!finalText && iterations > 0) {
+      logger.warn({ msg: 'Gemini retornou vazio apos function call, retentando...' });
+      const retryResponse = await callGeminiWithRetry({
+        model: MODEL_NAME,
+        contents,
+        config: {
+          systemInstruction: systemPrompt,
+          temperature: 0.5,
+          tools: [{
+            functionDeclarations: functionDeclarations as any,
+          }],
+        },
+      });
+
+      const retryParts = retryResponse.candidates?.[0]?.content?.parts || [];
+      finalText = retryParts
+        .filter((part: any) => part.text && part.text.trim().length > 0)
+        .map((part: any) => part.text)
+        .join('');
+    }
+
+    return finalText || 'Desculpa, não consegui processar sua mensagem. Pode repetir?';
   } catch (error) {
     logger.error({ msg: 'Erro no Gemini', error });
     return 'Ops, tive um probleminha técnico. Pode tentar de novo em alguns segundos?';
