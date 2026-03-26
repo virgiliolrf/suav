@@ -1,11 +1,268 @@
 import { PrismaClient } from '@prisma/client';
 import { queryRevenue, queryAppointmentStats, queryTopPerformers, queryClientStats, getClientHistory, queryDayAppointments } from '../../services/admin-query';
 import { queryNoShows, queryCancellations, queryPeakHours, queryClientRetention } from '../../services/admin-analytics';
+import { reportRevenueByService, reportRevenueByProfessionalByService, reportClientFrequency, reportServicePopularity, reportProfessionalUtilization, reportDailySummary, reportNewVsReturning, reportAverageTicket, reportCancellationAnalysis, reportInactiveProfessionals } from '../../services/admin-reports-universal';
 import { blockTimeSlot, unblockTimeSlot } from '../../services/professional';
 import { findProfessional } from '../../services/catalog';
 import { normalizePhone } from '../../utils/phone';
+import { normalize } from '../../utils/fuzzy';
 
 const prisma = new PrismaClient();
+
+// ==================== HELPERS UNIVERSAIS ====================
+
+const MODEL_MAP: Record<string, any> = {
+  Appointment: () => prisma.appointment,
+  Client: () => prisma.client,
+  Professional: () => prisma.professional,
+  Service: () => prisma.service,
+  Category: () => prisma.category,
+  ProfessionalService: () => prisma.professionalService,
+  WorkSchedule: () => prisma.workSchedule,
+  ConversationLog: () => prisma.conversationLog,
+  AdminUser: () => prisma.adminUser,
+  InstagramClient: () => prisma.instagramClient,
+};
+
+function getModelDelegate(table: string) {
+  const getter = MODEL_MAP[table];
+  if (!getter) throw new Error(`Tabela "${table}" não existe`);
+  return getter();
+}
+
+const DATE_FIELDS = ['dateTime', 'endTime', 'createdAt', 'updatedAt', 'cancelledAt'];
+const OPERATORS = ['gt', 'gte', 'lt', 'lte', 'contains', 'startsWith', 'not', 'in', 'equals'];
+
+function parseFilters(filters: Record<string, any>): Record<string, any> {
+  if (!filters) return {};
+  const where: Record<string, any> = {};
+
+  for (const [key, value] of Object.entries(filters)) {
+    const lastUnderscore = key.lastIndexOf('_');
+    let field: string;
+    let operator: string;
+
+    if (lastUnderscore > 0) {
+      const possibleOp = key.slice(lastUnderscore + 1);
+      if (OPERATORS.includes(possibleOp)) {
+        field = key.slice(0, lastUnderscore);
+        operator = possibleOp;
+      } else {
+        field = key; operator = 'equals';
+      }
+    } else {
+      field = key; operator = 'equals';
+    }
+
+    let processedValue = value;
+    if (DATE_FIELDS.includes(field) && typeof value === 'string') {
+      processedValue = new Date(value.includes('T') ? value : (operator === 'lte' ? value + 'T23:59:59' : value + 'T00:00:00'));
+    }
+
+    if (operator === 'equals') {
+      where[field] = processedValue;
+    } else if (operator === 'contains' || operator === 'startsWith') {
+      where[field] = { [operator]: processedValue, mode: 'insensitive' };
+    } else {
+      where[field] = { ...where[field], [operator]: processedValue };
+    }
+  }
+  return where;
+}
+
+function parseRelationFilters(filterRelations: Record<string, any>): Record<string, any> {
+  if (!filterRelations) return {};
+  const where: Record<string, any> = {};
+  for (const [relation, filters] of Object.entries(filterRelations)) {
+    where[relation] = parseFilters(filters as Record<string, any>);
+  }
+  return where;
+}
+
+function buildInclude(includeArr: string[] | undefined): Record<string, boolean> | undefined {
+  if (!includeArr || includeArr.length === 0) return undefined;
+  const include: Record<string, boolean> = {};
+  for (const rel of includeArr) include[rel] = true;
+  return include;
+}
+
+function buildOrderBy(orderByStr: string | undefined): Record<string, string> | undefined {
+  if (!orderByStr) return undefined;
+  const desc = orderByStr.startsWith('-');
+  const field = desc ? orderByStr.slice(1) : orderByStr;
+  return { [field]: desc ? 'desc' : 'asc' };
+}
+
+// ==================== QUERY UNIVERSAL ====================
+
+async function executeAdminQuery(args: Record<string, any>): Promise<any> {
+  try {
+    const model = getModelDelegate(args.table);
+    const baseWhere = parseFilters(args.filters || {});
+    const relationWhere = parseRelationFilters(args.filter_relations || {});
+    const where = { ...baseWhere, ...relationWhere };
+    const include = buildInclude(args.include);
+    const orderBy = buildOrderBy(args.order_by);
+    const limit = Math.min(args.limit || 50, 200);
+
+    switch (args.action) {
+      case 'findMany': {
+        const results = await model.findMany({
+          where, include, orderBy, take: limit, skip: args.offset || 0,
+        });
+        // Truncar ConversationLog content
+        if (args.table === 'ConversationLog') {
+          for (const r of results) {
+            if (r.content && r.content.length > 200) r.content = r.content.slice(0, 200) + '...';
+          }
+        }
+        return { _meta: { table: args.table, action: 'findMany', count: results.length, limit }, results };
+      }
+      case 'findFirst': {
+        const result = await model.findFirst({ where, include, orderBy });
+        return { _meta: { table: args.table, action: 'findFirst', found: !!result }, result };
+      }
+      case 'count': {
+        const count = await model.count({ where });
+        return { _meta: { table: args.table, action: 'count' }, count };
+      }
+      case 'aggregate': {
+        if (args.group_by_field) {
+          // groupBy com agregação
+          const groupByResult = await model.groupBy({
+            by: [args.group_by_field],
+            where,
+            _count: true,
+            ...(args.aggregate_field && args.aggregate_fn === 'sum' ? { _sum: { [args.aggregate_field]: true } } : {}),
+            ...(args.aggregate_field && args.aggregate_fn === 'avg' ? { _avg: { [args.aggregate_field]: true } } : {}),
+            ...(args.aggregate_field && args.aggregate_fn === 'min' ? { _min: { [args.aggregate_field]: true } } : {}),
+            ...(args.aggregate_field && args.aggregate_fn === 'max' ? { _max: { [args.aggregate_field]: true } } : {}),
+          });
+          return { _meta: { table: args.table, action: 'aggregate+groupBy' }, groups: groupByResult };
+        }
+        const aggObj: any = {};
+        if (args.aggregate_fn && args.aggregate_field) {
+          aggObj[`_${args.aggregate_fn}`] = { [args.aggregate_field]: true };
+        }
+        aggObj._count = true;
+        const aggResult = await model.aggregate({ where, ...aggObj });
+        return { _meta: { table: args.table, action: 'aggregate' }, ...aggResult };
+      }
+      case 'groupBy': {
+        const field = args.group_by_field;
+        if (!field) return { error: 'group_by_field é obrigatório para action=groupBy' };
+        const groups = await model.groupBy({
+          by: [field], where, _count: true,
+          ...(args.aggregate_field ? { _sum: { [args.aggregate_field]: true } } : {}),
+        });
+        return { _meta: { table: args.table, action: 'groupBy', groups: groups.length }, groups };
+      }
+      default:
+        return { error: `action "${args.action}" inválida. Use: findMany, findFirst, count, aggregate, groupBy` };
+    }
+  } catch (err: any) {
+    return { error: `Erro na consulta: ${err.message}` };
+  }
+}
+
+// ==================== MODIFY UNIVERSAL ====================
+
+const READONLY_TABLES = ['ConversationLog', 'InstagramClient'];
+const PROTECTED_FIELDS = ['id', 'createdAt', 'updatedAt'];
+
+async function executeAdminModify(args: Record<string, any>): Promise<any> {
+  try {
+    if (READONLY_TABLES.includes(args.table)) {
+      return { success: false, message: `Tabela ${args.table} é somente leitura` };
+    }
+
+    const model = getModelDelegate(args.table);
+    const data = { ...(args.data || {}) };
+
+    // Remover campos protegidos
+    for (const f of PROTECTED_FIELDS) delete data[f];
+
+    // Auto-normalizar names
+    if ((args.table === 'Service' || args.table === 'Professional') && data.name && !data.normalizedName) {
+      data.normalizedName = normalize(data.name);
+    }
+
+    // Converter datas
+    for (const field of DATE_FIELDS) {
+      if (data[field] && typeof data[field] === 'string') {
+        data[field] = new Date(data[field]);
+      }
+    }
+
+    switch (args.action) {
+      case 'create': {
+        const created = await model.create({ data });
+        return { success: true, action: 'created', record: created };
+      }
+      case 'update': {
+        if (!args.record_id && !args.composite_id) {
+          return { success: false, message: 'record_id ou composite_id é obrigatório para update' };
+        }
+        const whereUpdate = args.table === 'ProfessionalService'
+          ? { professionalId_serviceId: args.composite_id }
+          : { id: args.record_id };
+        const updated = await model.update({ where: whereUpdate, data });
+        return { success: true, action: 'updated', record: updated };
+      }
+      case 'delete': {
+        if (!args.record_id && !args.composite_id) {
+          return { success: false, message: 'record_id ou composite_id é obrigatório para delete' };
+        }
+        // Checar dependências
+        if (args.table === 'Professional' || args.table === 'Service') {
+          const depCount = await prisma.appointment.count({
+            where: args.table === 'Professional'
+              ? { professionalId: args.record_id }
+              : { serviceId: args.record_id },
+          });
+          if (depCount > 0) {
+            return { success: false, message: `Não posso deletar: existem ${depCount} agendamentos vinculados. Sugiro desativar (active=false).` };
+          }
+        }
+        const whereDelete = args.table === 'ProfessionalService'
+          ? { professionalId_serviceId: args.composite_id }
+          : { id: args.record_id };
+        await model.delete({ where: whereDelete });
+        return { success: true, action: 'deleted', record_id: args.record_id || args.composite_id };
+      }
+      default:
+        return { error: `action "${args.action}" inválida. Use: create, update, delete` };
+    }
+  } catch (err: any) {
+    if (err.code === 'P2002') return { success: false, message: 'Registro com esse valor já existe (duplicado)' };
+    if (err.code === 'P2025') return { success: false, message: 'Registro não encontrado' };
+    if (err.code === 'P2003') return { success: false, message: 'Referência inválida — verifique os IDs' };
+    return { success: false, message: `Erro: ${err.message}` };
+  }
+}
+
+// ==================== REPORT UNIVERSAL ====================
+
+async function executeAdminReport(args: Record<string, any>): Promise<any> {
+  try {
+    const params = { startDate: args.start_date, endDate: args.end_date, professionalName: args.professional_name, serviceName: args.service_name };
+    switch (args.report_type) {
+      case 'revenue_by_service': return reportRevenueByService(params);
+      case 'revenue_by_professional_by_service': return reportRevenueByProfessionalByService(params);
+      case 'client_frequency': return reportClientFrequency(params);
+      case 'service_popularity': return reportServicePopularity(params);
+      case 'professional_utilization': return reportProfessionalUtilization(params);
+      case 'daily_summary': return reportDailySummary(params);
+      case 'new_vs_returning': return reportNewVsReturning(params);
+      case 'average_ticket': return reportAverageTicket(params);
+      case 'cancellation_analysis': return reportCancellationAnalysis(params);
+      case 'inactive_professionals': return reportInactiveProfessionals(params);
+      default: return { error: `Relatório "${args.report_type}" não existe` };
+    }
+  } catch (err: any) {
+    return { error: `Erro no relatório: ${err.message}` };
+  }
+}
 
 /**
  * Declaracoes de funcoes admin (JSON Schema para OpenAI)
@@ -241,6 +498,76 @@ export const adminFunctionDeclarations = [
       properties: {
         days_inactive: { type: 'number' as const, description: 'Dias sem visita para considerar inativa (padrão: 60)' },
       },
+    },
+  },
+  // ==================== FUNÇÕES UNIVERSAIS (AGI) ====================
+  {
+    name: 'admin_query',
+    description: `Consulta universal — busca QUALQUER dado do sistema com filtros, relações, agregação.
+Use quando nenhuma função específica atende.
+
+TABELAS: Appointment, Client, Professional, Service, Category, ProfessionalService, WorkSchedule, ConversationLog, AdminUser, InstagramClient
+
+FILTROS: {campo_operador: valor}. Operadores: gt, gte, lt, lte, contains, startsWith, not, in. Sem operador = equals.
+Datas: "2026-03-01" (auto-converte). Ex: {price_gt:100, status_in:["CONFIRMED","COMPLETED"], dateTime_gte:"2026-03-01"}
+
+RELAÇÕES (include): Appointment→client,service,professional. Service→category. Professional→services,workSchedule. Client→appointments.
+filter_relations: {professional:{name_contains:"Larissa"}}`,
+    parameters: {
+      type: 'object' as const,
+      properties: {
+        table: { type: 'string' as const, enum: ['Appointment', 'Client', 'Professional', 'Service', 'Category', 'ProfessionalService', 'WorkSchedule', 'ConversationLog', 'AdminUser', 'InstagramClient'], description: 'Tabela' },
+        action: { type: 'string' as const, enum: ['findMany', 'findFirst', 'count', 'aggregate', 'groupBy'], description: 'Tipo de consulta' },
+        filters: { type: 'object' as const, description: 'Filtros: {campo_operador: valor}. Ex: {price_gt:100, active:true, dateTime_gte:"2026-03-01"}' },
+        filter_relations: { type: 'object' as const, description: 'Filtros em relações: {professional:{name_contains:"Larissa"}}' },
+        include: { type: 'array' as const, items: { type: 'string' as const }, description: 'Relações: ["client","service","professional"]' },
+        order_by: { type: 'string' as const, description: 'Ordenar: "price", "-dateTime" (- = decrescente)' },
+        limit: { type: 'number' as const, description: 'Máx registros (padrão 50, máx 200)' },
+        offset: { type: 'number' as const, description: 'Pular N registros' },
+        aggregate_fn: { type: 'string' as const, enum: ['count', 'sum', 'avg', 'min', 'max'], description: 'Função de agregação' },
+        aggregate_field: { type: 'string' as const, description: 'Campo para agregar: "price", "priceAtBooking"' },
+        group_by_field: { type: 'string' as const, description: 'Agrupar por: "status", "professionalId", "categoryId"' },
+      },
+      required: ['table', 'action'],
+    },
+  },
+  {
+    name: 'admin_modify',
+    description: `Modifica dados — CRIA, ATUALIZA ou DELETA registros em qualquer tabela.
+⚠️ DELETE só com ID específico. ConversationLog e InstagramClient são read-only.
+
+Exemplos:
+- Criar serviço: table=Service, action=create, data={name:"Design Sobrancelha", price:45, durationMinutes:30, categoryId:5, active:true}
+- Atualizar: table=Service, action=update, record_id=15, data={durationMinutes:45}
+- Vincular prof→serviço: table=ProfessionalService, action=create, data={professionalId:1, serviceId:15}
+- Deletar: table=Service, action=delete, record_id=15`,
+    parameters: {
+      type: 'object' as const,
+      properties: {
+        table: { type: 'string' as const, enum: ['Appointment', 'Client', 'Professional', 'Service', 'Category', 'ProfessionalService', 'WorkSchedule', 'AdminUser'], description: 'Tabela' },
+        action: { type: 'string' as const, enum: ['create', 'update', 'delete'], description: 'Ação' },
+        record_id: { type: 'number' as const, description: 'ID do registro (para update/delete)' },
+        composite_id: { type: 'object' as const, description: 'ID composto ProfessionalService: {professionalId:N, serviceId:N}' },
+        data: { type: 'object' as const, description: 'Dados: {name:"X", price:50, active:true}' },
+      },
+      required: ['table', 'action'],
+    },
+  },
+  {
+    name: 'admin_report',
+    description: `Relatório analítico cruzando múltiplas tabelas. Use para perguntas complexas de negócio.
+
+Tipos: revenue_by_service, revenue_by_professional_by_service, client_frequency, service_popularity, professional_utilization, daily_summary, new_vs_returning, average_ticket, cancellation_analysis, inactive_professionals`,
+    parameters: {
+      type: 'object' as const,
+      properties: {
+        report_type: { type: 'string' as const, enum: ['revenue_by_service', 'revenue_by_professional_by_service', 'client_frequency', 'service_popularity', 'professional_utilization', 'daily_summary', 'new_vs_returning', 'average_ticket', 'cancellation_analysis', 'inactive_professionals'], description: 'Tipo de relatório' },
+        start_date: { type: 'string' as const, description: 'Data início YYYY-MM-DD (padrão: início do mês)' },
+        end_date: { type: 'string' as const, description: 'Data fim YYYY-MM-DD (padrão: hoje)' },
+        professional_name: { type: 'string' as const, description: 'Filtrar por profissional (opcional)' },
+        service_name: { type: 'string' as const, description: 'Filtrar por serviço (opcional)' },
+      },
+      required: ['report_type'],
     },
   },
 ];
@@ -538,6 +865,16 @@ export async function executeAdminFunction(
       return queryClientRetention({
         daysInactive: args.days_inactive,
       });
+
+    // === FUNÇÕES UNIVERSAIS (AGI) ===
+    case 'admin_query':
+      return executeAdminQuery(args);
+
+    case 'admin_modify':
+      return executeAdminModify(args);
+
+    case 'admin_report':
+      return executeAdminReport(args);
 
     default:
       return { error: `Função admin desconhecida: ${name}` };

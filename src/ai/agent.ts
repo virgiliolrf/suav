@@ -9,7 +9,8 @@ const prismaAgent = new PrismaClient();
 import type { ChannelType } from '../channels/types';
 import type { ChatCompletionMessageParam, ChatCompletionTool } from 'openai/resources/chat/completions';
 
-const MAX_FUNCTION_CALLS = 5;
+const MAX_FUNCTION_CALLS_DEFAULT = 5;
+const MAX_FUNCTION_CALLS_ADMIN = 8;
 const MAX_RETRIES = 5;
 const RETRY_DELAY_MS = 2000;
 
@@ -125,7 +126,8 @@ export async function processMessage(params: {
 
     // Loop de function calling
     let iterations = 0;
-    while (iterations < MAX_FUNCTION_CALLS) {
+    const maxCalls = role === 'admin' ? MAX_FUNCTION_CALLS_ADMIN : MAX_FUNCTION_CALLS_DEFAULT;
+    while (iterations < maxCalls) {
       const choice = response.choices?.[0];
       if (!choice?.message) break;
 
