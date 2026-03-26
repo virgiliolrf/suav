@@ -77,9 +77,8 @@ export async function processMessage(params: {
   // Selecionar prompt e funções baseado no papel
   let systemPrompt: string;
   let functionDeclarations: any[];
-  // Cliente: temperatura um pouco maior pra mais variedade no tom
-  // Admin/Professional: temperatura baixa pra precisão com dados
-  const temperature = role === 'client' ? 0.4 : 0.3;
+  // gpt-5-nano não suporta temperature customizada — usa default (1)
+  const temperature = undefined;
 
   switch (role) {
     case 'admin':
@@ -117,7 +116,7 @@ export async function processMessage(params: {
       model: MODEL_NAME,
       messages,
       tools,
-      temperature,
+
     });
 
     // Track which functions were called and their results
@@ -226,7 +225,7 @@ export async function processMessage(params: {
         model: MODEL_NAME,
         messages,
         tools,
-        temperature,
+  
       });
 
       iterations++;
@@ -318,7 +317,8 @@ export async function processMessage(params: {
             model: MODEL_NAME,
             messages,
             tools,
-            temperature: 0.1,
+
+
           });
 
           const correctedText = correctedResponse.choices?.[0]?.message?.content || '';
@@ -346,7 +346,8 @@ export async function processMessage(params: {
         model: MODEL_NAME,
         messages,
         tools,
-        temperature: 0.5,
+
+
       });
 
       finalText = retryResponse.choices?.[0]?.message?.content || '';
@@ -393,8 +394,8 @@ export async function processMessage(params: {
     }
 
     return finalText || 'Desculpa, não consegui processar sua mensagem. Pode repetir?';
-  } catch (error) {
-    logger.error({ msg: 'Erro no OpenAI', error });
+  } catch (error: any) {
+    logger.error({ msg: 'Erro no OpenAI', status: error?.status, message: error?.message, code: error?.code, type: error?.type });
     return 'Ops, tive um probleminha técnico. Pode tentar de novo em alguns segundos?';
   }
 }
