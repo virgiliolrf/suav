@@ -121,9 +121,14 @@ export async function handleIncomingMessage(
     let adminName: string | undefined;
     let professionalInfo: { id: number; name: string } | null = null;
 
+    // DEBUG: Logar telefone recebido SEMPRE
+    logger.info({ msg: 'ROLE CHECK — telefone recebido', senderPhone: message.senderPhone || '(vazio)', channel: message.channel });
+
     if (message.senderPhone) {
       // Verificar admin primeiro
       const isAdmin = await isAdminPhone(message.senderPhone);
+      logger.info({ msg: 'ROLE CHECK — isAdmin resultado', phone: message.senderPhone, isAdmin });
+
       if (isAdmin) {
         role = 'admin';
         // Buscar nome do admin
@@ -138,8 +143,12 @@ export async function handleIncomingMessage(
         if (professionalInfo) {
           role = 'professional';
           logger.info({ msg: 'PROFISSIONAL DETECTADA', phone: message.senderPhone, name: professionalInfo.name, channel: message.channel });
+        } else {
+          logger.info({ msg: 'ROLE CHECK — CLIENTE (nenhum match)', phone: message.senderPhone });
         }
       }
+    } else {
+      logger.warn({ msg: 'ROLE CHECK — senderPhone VAZIO, default client' });
     }
 
     // Resolver telefone e dados do cliente
