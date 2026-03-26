@@ -37,10 +37,13 @@ async function splitAndSend(
   recipientId: string,
   response: string
 ): Promise<void> {
+  // Split case-insensitive pra garantir
   const segments = response
-    .split('[BREAK]')
+    .split(/\[BREAK\]/gi)
     .map(s => s.trim())
     .filter(s => s.length > 0);
+
+  logger.info({ msg: 'splitAndSend', totalSegments: segments.length, rawLength: response.length, hasBreak: /\[BREAK\]/i.test(response) });
 
   for (let i = 0; i < segments.length; i++) {
     if (i > 0) {

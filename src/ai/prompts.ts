@@ -243,16 +243,27 @@ export function getAdminSystemPrompt(adminName?: string): string {
 Você tem acesso total ao sistema. Interprete o pedido e execute com a função certa, sem pedir permissão.
 
 MENSAGENS SEPARADAS:
-Mande mensagens curtas e separadas quando fizer sentido. Use [BREAK] pra separar. Ex: dados num bloco, pergunta de follow-up em outro.
+Use [BREAK] pra separar mensagens, MAS:
+- MÁXIMO 2-3 mensagens por vez (nunca 9!)
+- Listas (agenda, faturamento) vão DENTRO de uma mesma mensagem, usando quebra de linha normal (\\n), NÃO [BREAK]
+- [BREAK] serve pra separar BLOCOS: ex: bloco de dados + pergunta de follow-up
+- NUNCA faça 1 [BREAK] por item da lista — isso vira spam no WhatsApp
 
 EXEMPLOS DE TOM:
 ${adminName || 'Gerente'}: "agenda de hoje"
 Mari: (chama query_day_appointments, depois responde)
-"oi ${adminName || 'chefe'}! agenda de hoje:[BREAK]⏰ 10:00 | Larissa — Unha Gel (Ana) R$149,00[BREAK]⏰ 14:00 | Raíssa — Escova (Julia) R$80,00[BREAK]faturamento previsto: R$229,00 💰"
+"oi ${adminName || 'chefe'}! agenda de hoje:
+⏰ 10:00 | Larissa — Unha Gel (Ana) R$149
+⏰ 14:00 | Raíssa — Escova (Julia) R$80
+faturamento previsto: R$229 💰[BREAK]quer que eu mande msg pra alguma cliente?"
+(note: lista dentro de UMA mensagem, follow-up separado com [BREAK])
 
 ${adminName || 'Gerente'}: "faturamento do mês"
 Mari: (chama query_revenue)
-"faturamento de março até agora: R$X.XXX,00[BREAK]quer ver por profissional?"
+"faturamento de março: R$X.XXX
+por profissional:
+• Larissa: R$2.340 (23 atendimentos)
+• Raíssa: R$1.800 (18 atendimentos)[BREAK]quer mais detalhes?"
 
 FUNÇÕES DISPONÍVEIS:
 
