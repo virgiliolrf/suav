@@ -1,6 +1,6 @@
-import { Type } from '@google/genai';
 import { PrismaClient } from '@prisma/client';
 import { queryRevenue, queryAppointmentStats, queryTopPerformers, queryClientStats, getClientHistory, queryDayAppointments } from '../../services/admin-query';
+import { queryNoShows, queryCancellations, queryPeakHours, queryClientRetention } from '../../services/admin-analytics';
 import { blockTimeSlot, unblockTimeSlot } from '../../services/professional';
 import { findProfessional } from '../../services/catalog';
 import { normalizePhone } from '../../utils/phone';
@@ -8,18 +8,18 @@ import { normalizePhone } from '../../utils/phone';
 const prisma = new PrismaClient();
 
 /**
- * Declaracoes de funcoes admin para o Gemini
+ * Declaracoes de funcoes admin (JSON Schema para OpenAI)
  */
 export const adminFunctionDeclarations = [
   {
     name: 'query_revenue',
     description: 'Consulta o faturamento do salão em um período. Retorna total, detalhamento por profissional e por categoria.',
     parameters: {
-      type: Type.OBJECT,
+      type: 'object' as const,
       properties: {
-        start_date: { type: Type.STRING, description: 'Data início YYYY-MM-DD' },
-        end_date: { type: Type.STRING, description: 'Data fim YYYY-MM-DD' },
-        professional_name: { type: Type.STRING, description: 'Filtrar por profissional (opcional)' },
+        start_date: { type: 'string' as const, description: 'Data início YYYY-MM-DD' },
+        end_date: { type: 'string' as const, description: 'Data fim YYYY-MM-DD' },
+        professional_name: { type: 'string' as const, description: 'Filtrar por profissional (opcional)' },
       },
       required: ['start_date', 'end_date'],
     },
@@ -28,11 +28,11 @@ export const adminFunctionDeclarations = [
     name: 'query_appointment_stats',
     description: 'Estatísticas de agendamentos: total, confirmados, cancelados, no-show. Pode agrupar por profissional, serviço, dia ou status.',
     parameters: {
-      type: Type.OBJECT,
+      type: 'object' as const,
       properties: {
-        start_date: { type: Type.STRING, description: 'Data início YYYY-MM-DD' },
-        end_date: { type: Type.STRING, description: 'Data fim YYYY-MM-DD' },
-        group_by: { type: Type.STRING, description: 'Agrupar por: "professional", "service", "day" ou "status"' },
+        start_date: { type: 'string' as const, description: 'Data início YYYY-MM-DD' },
+        end_date: { type: 'string' as const, description: 'Data fim YYYY-MM-DD' },
+        group_by: { type: 'string' as const, description: 'Agrupar por: "professional", "service", "day" ou "status"' },
       },
       required: ['start_date', 'end_date'],
     },
@@ -41,11 +41,11 @@ export const adminFunctionDeclarations = [
     name: 'query_top_performers',
     description: 'Ranking das profissionais por faturamento ou número de atendimentos em um período.',
     parameters: {
-      type: Type.OBJECT,
+      type: 'object' as const,
       properties: {
-        metric: { type: Type.STRING, description: '"revenue" para faturamento ou "appointments" para número de atendimentos' },
-        start_date: { type: Type.STRING, description: 'Data início YYYY-MM-DD' },
-        end_date: { type: Type.STRING, description: 'Data fim YYYY-MM-DD' },
+        metric: { type: 'string' as const, description: '"revenue" para faturamento ou "appointments" para número de atendimentos' },
+        start_date: { type: 'string' as const, description: 'Data início YYYY-MM-DD' },
+        end_date: { type: 'string' as const, description: 'Data fim YYYY-MM-DD' },
       },
       required: ['metric', 'start_date', 'end_date'],
     },
@@ -54,10 +54,10 @@ export const adminFunctionDeclarations = [
     name: 'query_client_stats',
     description: 'Estatísticas de clientes: total, novos, recorrentes e ranking de clientes mais frequentes.',
     parameters: {
-      type: Type.OBJECT,
+      type: 'object' as const,
       properties: {
-        start_date: { type: Type.STRING, description: 'Data início YYYY-MM-DD' },
-        end_date: { type: Type.STRING, description: 'Data fim YYYY-MM-DD' },
+        start_date: { type: 'string' as const, description: 'Data início YYYY-MM-DD' },
+        end_date: { type: 'string' as const, description: 'Data fim YYYY-MM-DD' },
       },
       required: ['start_date', 'end_date'],
     },
@@ -66,9 +66,9 @@ export const adminFunctionDeclarations = [
     name: 'query_client_history',
     description: 'Busca histórico completo de visitas de uma cliente pelo telefone.',
     parameters: {
-      type: Type.OBJECT,
+      type: 'object' as const,
       properties: {
-        client_phone: { type: Type.STRING, description: 'Telefone da cliente com DDD' },
+        client_phone: { type: 'string' as const, description: 'Telefone da cliente com DDD' },
       },
       required: ['client_phone'],
     },
@@ -77,11 +77,11 @@ export const adminFunctionDeclarations = [
     name: 'query_day_appointments',
     description: 'Lista TODOS os agendamentos de um dia com detalhes: horário, profissional, serviço, cliente, telefone, valor, status. Use quando perguntar "agenda de hoje", "agendamentos de amanhã", etc.',
     parameters: {
-      type: Type.OBJECT,
+      type: 'object' as const,
       properties: {
-        date: { type: Type.STRING, description: 'Data YYYY-MM-DD' },
-        status: { type: Type.STRING, description: 'Filtrar por status (opcional)' },
-        professional_name: { type: Type.STRING, description: 'Filtrar por profissional (opcional)' },
+        date: { type: 'string' as const, description: 'Data YYYY-MM-DD' },
+        status: { type: 'string' as const, description: 'Filtrar por status (opcional)' },
+        professional_name: { type: 'string' as const, description: 'Filtrar por profissional (opcional)' },
       },
       required: ['date'],
     },
@@ -90,13 +90,13 @@ export const adminFunctionDeclarations = [
     name: 'block_time_slot',
     description: 'Bloqueia um horário de uma profissional (agendamento externo, reunião, intervalo). Impede que clientes agendem nesse horário.',
     parameters: {
-      type: Type.OBJECT,
+      type: 'object' as const,
       properties: {
-        professional_name: { type: Type.STRING, description: 'Nome da profissional' },
-        date: { type: Type.STRING, description: 'Data YYYY-MM-DD' },
-        time: { type: Type.STRING, description: 'Horário HH:mm' },
-        duration_minutes: { type: Type.NUMBER, description: 'Duração em minutos (padrão: 60)' },
-        reason: { type: Type.STRING, description: 'Motivo do bloqueio (opcional)' },
+        professional_name: { type: 'string' as const, description: 'Nome da profissional' },
+        date: { type: 'string' as const, description: 'Data YYYY-MM-DD' },
+        time: { type: 'string' as const, description: 'Horário HH:mm' },
+        duration_minutes: { type: 'number' as const, description: 'Duração em minutos (padrão: 60)' },
+        reason: { type: 'string' as const, description: 'Motivo do bloqueio (opcional)' },
       },
       required: ['professional_name', 'date', 'time'],
     },
@@ -105,9 +105,9 @@ export const adminFunctionDeclarations = [
     name: 'unblock_time_slot',
     description: 'Remove bloqueio de horário pelo ID.',
     parameters: {
-      type: Type.OBJECT,
+      type: 'object' as const,
       properties: {
-        block_id: { type: Type.NUMBER, description: 'ID do bloqueio' },
+        block_id: { type: 'number' as const, description: 'ID do bloqueio' },
       },
       required: ['block_id'],
     },
@@ -117,10 +117,10 @@ export const adminFunctionDeclarations = [
     name: 'update_service_price',
     description: 'Altera o preço de um serviço. Use quando a dona/gerente pedir pra mudar preço.',
     parameters: {
-      type: Type.OBJECT,
+      type: 'object' as const,
       properties: {
-        service_name: { type: Type.STRING, description: 'Nome do serviço (busca parcial)' },
-        new_price: { type: Type.NUMBER, description: 'Novo preço em reais' },
+        service_name: { type: 'string' as const, description: 'Nome do serviço (busca parcial)' },
+        new_price: { type: 'number' as const, description: 'Novo preço em reais' },
       },
       required: ['service_name', 'new_price'],
     },
@@ -129,10 +129,10 @@ export const adminFunctionDeclarations = [
     name: 'toggle_professional_status',
     description: 'Ativa ou desativa uma profissional. Profissional desativada não aparece pra clientes.',
     parameters: {
-      type: Type.OBJECT,
+      type: 'object' as const,
       properties: {
-        professional_name: { type: Type.STRING, description: 'Nome da profissional' },
-        active: { type: Type.BOOLEAN, description: 'true = ativa, false = desativa' },
+        professional_name: { type: 'string' as const, description: 'Nome da profissional' },
+        active: { type: 'boolean' as const, description: 'true = ativa, false = desativa' },
       },
       required: ['professional_name', 'active'],
     },
@@ -141,13 +141,13 @@ export const adminFunctionDeclarations = [
     name: 'update_work_schedule',
     description: 'Altera o horário de trabalho de uma profissional em um dia da semana. Pode definir se trabalha, horário de início e fim.',
     parameters: {
-      type: Type.OBJECT,
+      type: 'object' as const,
       properties: {
-        professional_name: { type: Type.STRING, description: 'Nome da profissional' },
-        day_of_week: { type: Type.NUMBER, description: 'Dia: 0=domingo, 1=segunda, 2=terça, 3=quarta, 4=quinta, 5=sexta, 6=sábado' },
-        is_working: { type: Type.BOOLEAN, description: 'true = trabalha, false = folga' },
-        start_time: { type: Type.STRING, description: 'Horário início HH:mm (ex: "09:00")' },
-        end_time: { type: Type.STRING, description: 'Horário fim HH:mm (ex: "19:00")' },
+        professional_name: { type: 'string' as const, description: 'Nome da profissional' },
+        day_of_week: { type: 'number' as const, description: 'Dia: 0=domingo, 1=segunda, 2=terça, 3=quarta, 4=quinta, 5=sexta, 6=sábado' },
+        is_working: { type: 'boolean' as const, description: 'true = trabalha, false = folga' },
+        start_time: { type: 'string' as const, description: 'Horário início HH:mm (ex: "09:00")' },
+        end_time: { type: 'string' as const, description: 'Horário fim HH:mm (ex: "19:00")' },
       },
       required: ['professional_name', 'day_of_week'],
     },
@@ -156,11 +156,11 @@ export const adminFunctionDeclarations = [
     name: 'update_appointment_status',
     description: 'Altera o status de um agendamento. Use para marcar como COMPLETED, NO_SHOW, ou CANCELLED.',
     parameters: {
-      type: Type.OBJECT,
+      type: 'object' as const,
       properties: {
-        appointment_id: { type: Type.NUMBER, description: 'ID do agendamento' },
-        new_status: { type: Type.STRING, description: 'Novo status: CONFIRMED, COMPLETED, CANCELLED, NO_SHOW' },
-        reason: { type: Type.STRING, description: 'Motivo (opcional)' },
+        appointment_id: { type: 'number' as const, description: 'ID do agendamento' },
+        new_status: { type: 'string' as const, description: 'Novo status: CONFIRMED, COMPLETED, CANCELLED, NO_SHOW' },
+        reason: { type: 'string' as const, description: 'Motivo (opcional)' },
       },
       required: ['appointment_id', 'new_status'],
     },
@@ -169,9 +169,9 @@ export const adminFunctionDeclarations = [
     name: 'list_professionals',
     description: 'Lista todas as profissionais com status (ativa/inativa), telefone e serviços que fazem.',
     parameters: {
-      type: Type.OBJECT,
+      type: 'object' as const,
       properties: {
-        include_inactive: { type: Type.BOOLEAN, description: 'Incluir profissionais inativas (padrão: false)' },
+        include_inactive: { type: 'boolean' as const, description: 'Incluir profissionais inativas (padrão: false)' },
       },
     },
   },
@@ -179,9 +179,9 @@ export const adminFunctionDeclarations = [
     name: 'search_clients',
     description: 'Busca clientes por nome ou telefone. Mostra dados cadastrais e total de agendamentos.',
     parameters: {
-      type: Type.OBJECT,
+      type: 'object' as const,
       properties: {
-        query: { type: Type.STRING, description: 'Nome ou telefone pra buscar' },
+        query: { type: 'string' as const, description: 'Nome ou telefone pra buscar' },
       },
       required: ['query'],
     },
@@ -190,13 +190,57 @@ export const adminFunctionDeclarations = [
     name: 'update_client_info',
     description: 'Atualiza dados de uma cliente (nome, profissional preferida).',
     parameters: {
-      type: Type.OBJECT,
+      type: 'object' as const,
       properties: {
-        client_phone: { type: Type.STRING, description: 'Telefone da cliente' },
-        new_name: { type: Type.STRING, description: 'Novo nome (opcional)' },
-        preferred_professional: { type: Type.STRING, description: 'Profissional preferida (opcional)' },
+        client_phone: { type: 'string' as const, description: 'Telefone da cliente' },
+        new_name: { type: 'string' as const, description: 'Novo nome (opcional)' },
+        preferred_professional: { type: 'string' as const, description: 'Profissional preferida (opcional)' },
       },
       required: ['client_phone'],
+    },
+  },
+  // === ANALYTICS / INTELIGÊNCIA DO NEGÓCIO ===
+  {
+    name: 'query_no_shows',
+    description: 'Analisa faltas (no-shows): quantas, prejuízo total, clientes reincidentes. Útil para identificar clientes problemáticas.',
+    parameters: {
+      type: 'object' as const,
+      properties: {
+        start_date: { type: 'string' as const, description: 'Data início YYYY-MM-DD (padrão: início do mês)' },
+        end_date: { type: 'string' as const, description: 'Data fim YYYY-MM-DD (padrão: hoje)' },
+      },
+    },
+  },
+  {
+    name: 'query_cancellations',
+    description: 'Relatório de cancelamentos: total, prejuízo, motivos mais comuns. Útil para entender por que clientes cancelam.',
+    parameters: {
+      type: 'object' as const,
+      properties: {
+        start_date: { type: 'string' as const, description: 'Data início YYYY-MM-DD (padrão: início do mês)' },
+        end_date: { type: 'string' as const, description: 'Data fim YYYY-MM-DD (padrão: hoje)' },
+      },
+    },
+  },
+  {
+    name: 'query_peak_hours',
+    description: 'Mostra horários e dias de pico (mais agendamentos). Útil para otimizar escala de profissionais.',
+    parameters: {
+      type: 'object' as const,
+      properties: {
+        start_date: { type: 'string' as const, description: 'Data início YYYY-MM-DD (padrão: últimos 30 dias)' },
+        end_date: { type: 'string' as const, description: 'Data fim YYYY-MM-DD (padrão: hoje)' },
+      },
+    },
+  },
+  {
+    name: 'query_client_retention',
+    description: 'Lista clientes que não voltam há X dias (risco de perder). Útil para campanhas de reativação.',
+    parameters: {
+      type: 'object' as const,
+      properties: {
+        days_inactive: { type: 'number' as const, description: 'Dias sem visita para considerar inativa (padrão: 60)' },
+      },
     },
   },
 ];
@@ -470,6 +514,30 @@ export async function executeAdminFunction(
         message: `Dados atualizados: ${args.new_name || client.name} (${phone})`,
       };
     }
+
+    // === ANALYTICS ===
+    case 'query_no_shows':
+      return queryNoShows({
+        startDate: args.start_date,
+        endDate: args.end_date,
+      });
+
+    case 'query_cancellations':
+      return queryCancellations({
+        startDate: args.start_date,
+        endDate: args.end_date,
+      });
+
+    case 'query_peak_hours':
+      return queryPeakHours({
+        startDate: args.start_date,
+        endDate: args.end_date,
+      });
+
+    case 'query_client_retention':
+      return queryClientRetention({
+        daysInactive: args.days_inactive,
+      });
 
     default:
       return { error: `Função admin desconhecida: ${name}` };

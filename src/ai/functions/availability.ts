@@ -1,23 +1,22 @@
-import { Type } from '@google/genai';
 import { searchServices, getServicesByCategory, getProfessionalsForService, findProfessional } from '../../services/catalog';
 import { checkProfessionalAvailability, getAvailableSlots } from '../../services/professional';
 
 /**
- * Declaracoes de funcoes de disponibilidade para o Gemini
+ * Declaracoes de funcoes de disponibilidade (JSON Schema para OpenAI)
  */
 export const availabilityFunctionDeclarations = [
   {
     name: 'list_services',
     description: 'Lista servicos do salao. Use para buscar servicos por nome ou categoria. Retorna nome, preco, duracao e profissionais disponiveis.',
     parameters: {
-      type: Type.OBJECT,
+      type: 'object' as const,
       properties: {
         search: {
-          type: Type.STRING,
+          type: 'string' as const,
           description: 'Termo de busca para encontrar servicos (ex: "unha gel", "corte", "depilacao")',
         },
         category: {
-          type: Type.STRING,
+          type: 'string' as const,
           description: 'Filtrar por categoria: "Esmalteria", "Cabelos", "Depilação Cera", "Luz Pulsada | Epilação", "Estética"',
         },
       },
@@ -27,10 +26,10 @@ export const availabilityFunctionDeclarations = [
     name: 'check_service_professionals',
     description: 'Verifica quais profissionais podem realizar um servico especifico. Use quando a cliente perguntar quem faz determinado servico.',
     parameters: {
-      type: Type.OBJECT,
+      type: 'object' as const,
       properties: {
         service_name: {
-          type: Type.STRING,
+          type: 'string' as const,
           description: 'Nome do servico (pode ser aproximado, ex: "unha gel", "progressiva")',
         },
       },
@@ -41,22 +40,22 @@ export const availabilityFunctionDeclarations = [
     name: 'check_availability',
     description: 'Verifica se uma profissional esta disponivel em uma data e horario especificos para um servico. Use ANTES de agendar para confirmar disponibilidade.',
     parameters: {
-      type: Type.OBJECT,
+      type: 'object' as const,
       properties: {
         service_name: {
-          type: Type.STRING,
+          type: 'string' as const,
           description: 'Nome do servico',
         },
         professional_name: {
-          type: Type.STRING,
+          type: 'string' as const,
           description: 'Nome da profissional',
         },
         date: {
-          type: Type.STRING,
+          type: 'string' as const,
           description: 'Data no formato YYYY-MM-DD',
         },
         time: {
-          type: Type.STRING,
+          type: 'string' as const,
           description: 'Horario no formato HH:mm (ex: "14:00", "09:30")',
         },
       },
@@ -67,18 +66,18 @@ export const availabilityFunctionDeclarations = [
     name: 'list_available_slots',
     description: 'Lista todos os horarios disponiveis de uma profissional em uma data especifica. Use quando a cliente quer saber que horarios tem livres.',
     parameters: {
-      type: Type.OBJECT,
+      type: 'object' as const,
       properties: {
         professional_name: {
-          type: Type.STRING,
+          type: 'string' as const,
           description: 'Nome da profissional',
         },
         date: {
-          type: Type.STRING,
+          type: 'string' as const,
           description: 'Data no formato YYYY-MM-DD',
         },
         service_name: {
-          type: Type.STRING,
+          type: 'string' as const,
           description: 'Nome do servico (para calcular duracao do slot)',
         },
       },
@@ -148,8 +147,9 @@ export async function executeAvailabilityFunction(
         return { available: false, reason: 'Profissional nao encontrada' };
       }
 
-      // Verificar se a profissional faz esse servico
-      if (!service.professionals.includes(professional.name)) {
+      // Verificar se a profissional faz esse servico (comparação case-insensitive)
+      const profNameUpper = professional.name.toUpperCase();
+      if (!service.professionals.some(p => p.toUpperCase() === profNameUpper)) {
         return {
           available: false,
           reason: `${professional.name} nao realiza ${service.name}`,

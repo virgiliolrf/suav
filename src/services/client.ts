@@ -44,7 +44,7 @@ export async function getOrCreateClient(phone: string, name?: string): Promise<{
 
 /**
  * Salva o nome de uma cliente pelo telefone (sem precisar de agendamento)
- * Chamado pela funcao save_client_name do Gemini
+ * Chamado pela funcao save_client_name da IA
  */
 export async function saveClientName(phone: string, name: string): Promise<{
   success: boolean;

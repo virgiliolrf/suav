@@ -1,31 +1,49 @@
-import { genai, MODEL_NAME } from './gemini';
+import { openai, MODEL_NAME } from './openai';
 import { getClientSystemPrompt, getAdminSystemPrompt, getProfessionalSystemPrompt } from './prompts';
-import { clientFunctionDeclarations, adminAllFunctionDeclarations, professionalAllFunctionDeclarations, executeFunction } from './functions';
+import { clientFunctionDeclarations, clientFunctionDeclarationsWhatsApp, adminAllFunctionDeclarations, professionalAllFunctionDeclarations, executeFunction } from './functions';
 import { logger } from '../utils/logger';
-import type { Content, Part } from '@google/genai';
+import { getSendMessageFunction } from '../services/notification';
+import { PrismaClient } from '@prisma/client';
+
+const prismaAgent = new PrismaClient();
 import type { ChannelType } from '../channels/types';
+import type { ChatCompletionMessageParam, ChatCompletionTool } from 'openai/resources/chat/completions';
 
 const MAX_FUNCTION_CALLS = 5;
-const MAX_RETRIES = 3;
+const MAX_RETRIES = 5;
 const RETRY_DELAY_MS = 2000;
 
 /**
- * Chama Gemini com retry automatico em caso de 429 (rate limit)
+ * Chama OpenAI com retry automatico em caso de 429 (rate limit)
  */
-async function callGeminiWithRetry(params: any): Promise<any> {
+async function callWithRetry(params: any): Promise<any> {
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
-      return await genai.models.generateContent(params);
+      return await openai.chat.completions.create(params);
     } catch (error: any) {
       if (error?.status === 429 && attempt < MAX_RETRIES - 1) {
         const delay = RETRY_DELAY_MS * (attempt + 1);
-        logger.warn({ msg: `Gemini 429 - retry ${attempt + 1}/${MAX_RETRIES} em ${delay}ms` });
+        logger.warn({ msg: `OpenAI 429 - retry ${attempt + 1}/${MAX_RETRIES} em ${delay}ms` });
         await new Promise(r => setTimeout(r, delay));
         continue;
       }
       throw error;
     }
   }
+}
+
+/**
+ * Converte function declarations do formato interno para OpenAI tools
+ */
+function toOpenAITools(declarations: any[]): ChatCompletionTool[] {
+  return declarations.map(decl => ({
+    type: 'function' as const,
+    function: {
+      name: decl.name,
+      description: decl.description,
+      parameters: decl.parameters,
+    },
+  }));
 }
 
 /**
@@ -58,6 +76,9 @@ export async function processMessage(params: {
   // Selecionar prompt e funções baseado no papel
   let systemPrompt: string;
   let functionDeclarations: any[];
+  // Cliente: temperatura um pouco maior pra mais variedade no tom
+  // Admin/Professional: temperatura baixa pra precisão com dados
+  const temperature = role === 'client' ? 0.4 : 0.3;
 
   switch (role) {
     case 'admin':
@@ -70,65 +91,63 @@ export async function processMessage(params: {
       break;
     default:
       systemPrompt = getClientSystemPrompt(channel, !!clientPhone, clientName, preferredProfessional);
-      functionDeclarations = clientFunctionDeclarations;
+      functionDeclarations = channel === 'whatsapp' ? clientFunctionDeclarationsWhatsApp : clientFunctionDeclarations;
   }
 
-  // Montar historico de conversa no formato do Gemini
-  const contents: Content[] = [];
+  // Montar historico no formato OpenAI
+  const messages: ChatCompletionMessageParam[] = [
+    { role: 'system', content: systemPrompt },
+  ];
 
   for (const msg of conversationHistory) {
-    contents.push({
-      role: msg.role === 'user' ? 'user' : 'model',
-      parts: [{ text: msg.content }],
-    });
+    messages.push({
+      role: msg.role === 'user' ? 'user' : 'assistant',
+      content: msg.content,
+    } as ChatCompletionMessageParam);
   }
 
   // Adicionar mensagem atual
-  contents.push({
-    role: 'user',
-    parts: [{ text: userMessage }],
-  });
+  messages.push({ role: 'user', content: userMessage });
+
+  const tools = toOpenAITools(functionDeclarations);
 
   try {
-    let response = await callGeminiWithRetry({
+    let response = await callWithRetry({
       model: MODEL_NAME,
-      contents,
-      config: {
-        systemInstruction: systemPrompt,
-        temperature: 0.3,
-        tools: [{
-          functionDeclarations: functionDeclarations as any,
-        }],
-      },
+      messages,
+      tools,
+      temperature,
     });
 
-    // Track which functions were called
+    // Track which functions were called and their results
     const calledFunctions: string[] = [];
+    const functionResults: Map<string, any> = new Map();
 
     // Loop de function calling
     let iterations = 0;
     while (iterations < MAX_FUNCTION_CALLS) {
-      const candidate = response.candidates?.[0];
-      if (!candidate?.content?.parts) break;
+      const choice = response.choices?.[0];
+      if (!choice?.message) break;
 
-      // Verificar se tem function calls
-      const functionCallParts = candidate.content.parts.filter(
-        (part: any) => !!part.functionCall
-      );
+      const toolCalls = choice.message.tool_calls;
+      if (!toolCalls || toolCalls.length === 0) break;
 
-      if (functionCallParts.length === 0) break;
+      // Adicionar a resposta do assistente (com tool_calls) ao historico
+      messages.push(choice.message);
 
-      // Executar todas as function calls
-      const functionResponses: Part[] = [];
-
-      for (const part of functionCallParts) {
-        const fc = (part as any).functionCall;
-        const name: string = fc.name;
-        const args: Record<string, any> = fc.args || {};
+      // Executar todas as tool calls
+      for (const toolCall of toolCalls) {
+        const name = toolCall.function.name;
+        let args: Record<string, any> = {};
+        try {
+          args = JSON.parse(toolCall.function.arguments || '{}');
+        } catch {
+          args = {};
+        }
 
         calledFunctions.push(name);
         logger.info({
-          msg: 'Gemini function call',
+          msg: 'OpenAI function call',
           function: name,
           args,
           channel,
@@ -139,12 +158,9 @@ export async function processMessage(params: {
         // Injetar telefone da cliente em funcoes que precisam
         const enrichedArgs = { ...args };
         if (name === 'book_appointment' || name === 'get_client_appointments' || name === 'save_client_name') {
-          // Admin: NÃO forçar o telefone da admin como cliente
-          // O Gemini deve usar o telefone que a admin forneceu
           if (role === 'admin') {
-            // Não sobrescreve — usa o que o Gemini passou
+            // Não sobrescreve — usa o que o modelo passou
           } else if (channel === 'whatsapp' && clientPhone) {
-            // Cliente WhatsApp: SEMPRE usar o telefone real
             enrichedArgs.client_phone = clientPhone;
           } else if (!enrichedArgs.client_phone && clientPhone) {
             enrichedArgs.client_phone = clientPhone;
@@ -164,139 +180,219 @@ export async function processMessage(params: {
           result = { error: 'Erro interno ao processar. Tente novamente.' };
         }
 
+        // Se report_complaint mandou notificar admins, envia WhatsApp para a gerência
+        if (result?.__notify_admins && result?.__admin_message) {
+          const sendFn = getSendMessageFunction();
+          if (sendFn) {
+            try {
+              const admins = await prismaAgent.adminUser.findMany();
+              for (const admin of admins) {
+                if (admin.phone) {
+                  const { phoneToJid } = await import('../utils/phone');
+                  const jid = phoneToJid(admin.phone);
+                  await sendFn(jid, result.__admin_message);
+                }
+              }
+            } catch (notifyErr) {
+              logger.error({ msg: 'Erro ao notificar admins sobre reclamação', error: notifyErr });
+            }
+          }
+          // Limpar campos internos antes de passar pro modelo
+          delete result.__notify_admins;
+          delete result.__admin_message;
+        }
+
+        // Salvar resultado para validação posterior
+        functionResults.set(name, result);
+
         logger.info({
           msg: 'Function result',
           function: name,
           result: JSON.stringify(result).substring(0, 500),
         });
 
-        functionResponses.push({
-          functionResponse: {
-            name,
-            response: result,
-          },
+        // Adicionar resultado da tool ao historico
+        messages.push({
+          role: 'tool',
+          tool_call_id: toolCall.id,
+          content: JSON.stringify(result),
         });
       }
 
-      // Adicionar APENAS as function calls ao historico do modelo
-      // (descarta texto pre-funcao que pode conter dados inventados)
-      const modelParts = candidate.content.parts.filter(
-        (part: any) => !!part.functionCall
-      );
-      contents.push({
-        role: 'model',
-        parts: modelParts,
-      });
-
-      contents.push({
-        role: 'user',
-        parts: functionResponses,
-      });
-
-      // Chamar Gemini novamente com os resultados
-      response = await callGeminiWithRetry({
+      // Chamar OpenAI novamente com os resultados
+      response = await callWithRetry({
         model: MODEL_NAME,
-        contents,
-        config: {
-          systemInstruction: systemPrompt,
-          temperature: 0.3,
-          tools: [{
-            functionDeclarations: functionDeclarations as any,
-          }],
-        },
+        messages,
+        tools,
+        temperature,
       });
 
       iterations++;
     }
 
     // Extrair resposta texto final
-    let finalParts = response.candidates?.[0]?.content?.parts || [];
+    let finalText = response.choices?.[0]?.message?.content || '';
+
     logger.debug({
-      msg: 'Final response parts',
-      partsCount: finalParts.length,
-      parts: JSON.stringify(finalParts).substring(0, 1000),
+      msg: 'Final response',
+      textLength: finalText.length,
+      text: finalText.substring(0, 500),
     });
 
-    let finalText = finalParts
-      .filter((part: any) => part.text && part.text.trim().length > 0)
-      .map((part: any) => part.text)
-      .join('');
-
-    // SAFETY NET: Se o modelo mencionou profissionais sem ter chamado check_service_professionals,
-    // provavelmente inventou nomes. Forçar a chamada da função e re-gerar resposta.
-    if (role === 'client' && finalText && !calledFunctions.includes('check_service_professionals')) {
+    // SAFETY NET: Detectar alucinação de nomes de profissionais
+    if (role === 'client' && finalText) {
       const serviceKeywords = /\b(unha|gel|cabelo|corte|escova|progressiva|depila|manicure|pedicure|sobrancelha|cílio|cilios|extensão|alongamento|coloração|tintura|mechas|luzes|hidratação|botox|limpeza de pele|design|esmalt)\b/i;
       const hasServiceMention = serviceKeywords.test(userMessage);
-      // Detecta padrão "temos a X e a Y" que indica nomes inventados
       const hasNamePattern = /temos a \w+/i.test(finalText);
 
-      if (hasServiceMention && hasNamePattern) {
-        logger.warn({ msg: 'Detected hallucinated professional names — forcing check_service_professionals' });
+      let needsRegeneration = false;
+      let functionResultForRegen: any = null;
+      let serviceNameForRegen = '';
 
-        // Extrair nome do serviço da mensagem
-        const serviceMatch = userMessage.match(serviceKeywords);
-        const serviceName = serviceMatch ? serviceMatch[0] : userMessage;
+      if (!calledFunctions.includes('check_service_professionals')) {
+        if (hasServiceMention && hasNamePattern) {
+          logger.warn({ msg: 'Nomes sem check_service_professionals — forçando chamada' });
+          const serviceMatch = userMessage.match(serviceKeywords);
+          serviceNameForRegen = serviceMatch ? serviceMatch[0] : userMessage;
+          functionResultForRegen = await executeFunction('check_service_professionals', { service_name: serviceNameForRegen });
+          needsRegeneration = true;
+        }
+      } else if (hasNamePattern && functionResults.has('check_service_professionals')) {
+        const result = functionResults.get('check_service_professionals');
+        const realNames: string[] = [];
+        if (result?.professionals) {
+          for (const p of result.professionals) {
+            if (p.name) realNames.push(p.name.toUpperCase());
+          }
+        }
+        if (realNames.length > 0) {
+          const textUpper = finalText.toUpperCase();
+          const hasAnyRealName = realNames.some(n => textUpper.includes(n));
+          if (!hasAnyRealName) {
+            logger.warn({ msg: 'Nomes na resposta não batem com resultado da função — regenerando', realNames });
+            const serviceMatch = userMessage.match(serviceKeywords);
+            serviceNameForRegen = serviceMatch ? serviceMatch[0] : userMessage;
+            functionResultForRegen = result;
+            needsRegeneration = true;
+          }
+        }
+      }
 
-        // Forçar a chamada da função
-        const result = await executeFunction('check_service_professionals', { service_name: serviceName });
+      if (needsRegeneration && functionResultForRegen) {
+        const realNames: string[] = [];
+        if (functionResultForRegen.professionals) {
+          for (const p of functionResultForRegen.professionals) {
+            if (p.name) realNames.push(p.name);
+          }
+        }
 
-        // Re-gerar resposta com os dados reais
-        contents.push({
-          role: 'model',
-          parts: [{ functionCall: { name: 'check_service_professionals', args: { service_name: serviceName } } }],
-        });
-        contents.push({
-          role: 'user',
-          parts: [{ functionResponse: { name: 'check_service_professionals', response: result } }],
-        });
+        if (realNames.length > 0) {
+          const namesInstruction = `\n\nOs nomes das profissionais são EXATAMENTE: ${realNames.join(', ')}. Use ESSES nomes e NENHUM outro.`;
 
-        const correctedResponse = await callGeminiWithRetry({
-          model: MODEL_NAME,
-          contents,
-          config: {
-            systemInstruction: systemPrompt + '\n\nIMPORTANTE: Use SOMENTE os nomes de profissionais retornados pela função acima. NÃO invente nomes.',
-            temperature: 0.3,
-            tools: [{ functionDeclarations: functionDeclarations as any }],
-          },
-        });
+          // Adicionar tool call e resultado forçados
+          const forcedToolCallId = 'forced_check';
+          messages.push({
+            role: 'assistant',
+            content: null,
+            tool_calls: [{
+              id: forcedToolCallId,
+              type: 'function',
+              function: {
+                name: 'check_service_professionals',
+                arguments: JSON.stringify({ service_name: serviceNameForRegen }),
+              },
+            }],
+          } as any);
+          messages.push({
+            role: 'tool',
+            tool_call_id: forcedToolCallId,
+            content: JSON.stringify(functionResultForRegen),
+          });
 
-        const correctedParts = correctedResponse.candidates?.[0]?.content?.parts || [];
-        const correctedText = correctedParts
-          .filter((part: any) => part.text && part.text.trim().length > 0)
-          .map((part: any) => part.text)
-          .join('');
+          // Trocar system prompt com instrução extra
+          messages[0] = { role: 'system', content: systemPrompt + namesInstruction };
 
-        if (correctedText) {
-          finalText = correctedText;
+          const correctedResponse = await callWithRetry({
+            model: MODEL_NAME,
+            messages,
+            tools,
+            temperature: 0.1,
+          });
+
+          const correctedText = correctedResponse.choices?.[0]?.message?.content || '';
+
+          if (correctedText) {
+            const correctedUpper = correctedText.toUpperCase();
+            const hasRealName = realNames.some(n => correctedUpper.includes(n.toUpperCase()));
+            if (hasRealName) {
+              finalText = correctedText;
+            } else {
+              logger.warn({ msg: 'Regeneração também alucinhou — usando fallback com nomes reais' });
+              const serviceName = functionResultForRegen.service?.name || serviceNameForRegen;
+              const nameList = realNames.join(' e ');
+              finalText = `pra ${serviceName.toLowerCase()} temos a ${nameList}![BREAK]qual vc prefere? 😊`;
+            }
+          }
         }
       }
     }
 
-    // Se Gemini retornou vazio apos function call, tentar mais uma vez
+    // Se retornou vazio apos function call, tentar mais uma vez
     if (!finalText && iterations > 0) {
-      logger.warn({ msg: 'Gemini retornou vazio apos function call, retentando...' });
-      const retryResponse = await callGeminiWithRetry({
+      logger.warn({ msg: 'OpenAI retornou vazio apos function call, retentando...' });
+      const retryResponse = await callWithRetry({
         model: MODEL_NAME,
-        contents,
-        config: {
-          systemInstruction: systemPrompt,
-          temperature: 0.5,
-          tools: [{
-            functionDeclarations: functionDeclarations as any,
-          }],
-        },
+        messages,
+        tools,
+        temperature: 0.5,
       });
 
-      const retryParts = retryResponse.candidates?.[0]?.content?.parts || [];
-      finalText = retryParts
-        .filter((part: any) => part.text && part.text.trim().length > 0)
-        .map((part: any) => part.text)
-        .join('');
+      finalText = retryResponse.choices?.[0]?.message?.content || '';
+    }
+
+    // Pós-processamento do texto final
+    if (finalText) {
+      // Normalizar variações do delimiter ([break], [ BREAK ], etc.)
+      finalText = finalText.replace(/\[\s*break\s*\]/gi, '[BREAK]');
+
+      // Corrigir nomes duplicados (ex: "CamilaCamila" → "Camila")
+      finalText = finalText.replace(/([A-ZÁÀÂÃÉÈÊÍÏÓÔÕÖÚÇ][a-záàâãéèêíïóôõöúç]{2,})\1/g, '$1');
+
+      // Anti-bot: substituir frases de robô que o modelo insiste em usar
+      const botReplacements: [RegExp, string][] = [
+        [/como posso te ajudar\??/gi, ''],
+        [/em que posso ajudar\??/gi, ''],
+        [/o que (você|vc) precisa\??/gi, ''],
+        [/posso te ajudar com algo( mais)?\??/gi, ''],
+        [/posso ajudar com algo( mais)?\??/gi, ''],
+        [/posso te ajudar a /gi, ''],
+        [/precisa de mais alguma coisa\??/gi, ''],
+        [/se precisar[^.!?\n]*/gi, ''],
+        [/estou à disposição[.!]?/gi, ''],
+        [/\binfelizmente\b/gi, 'poxa'],
+        [/vou verificar[^.!?\n]*/gi, ''],
+        [/aguenta só um instante[.!]?/gi, ''],
+        [/só um instante[.!]?/gi, ''],
+        [/é só (chamar|falar|mandar mensagem)[.!]?/gi, ''],
+        [/qualquer (dúvida|coisa)[, ]*(é só|pode)[^.!?\n]*/gi, ''],
+      ];
+
+      for (const [pattern, replacement] of botReplacements) {
+        if (pattern.test(finalText)) {
+          logger.warn({ msg: 'Anti-bot: substituindo frase de robô', pattern: pattern.source });
+          finalText = finalText.replace(pattern, replacement);
+        }
+      }
+
+      // Limpar espaços duplos e [BREAK] vazios após remoções
+      finalText = finalText.replace(/\s{2,}/g, ' ').trim();
+      finalText = finalText.replace(/\[BREAK\]\s*\[BREAK\]/g, '[BREAK]');
+      finalText = finalText.replace(/^\[BREAK\]|(\[BREAK\]\s*$)/g, '').trim();
     }
 
     return finalText || 'Desculpa, não consegui processar sua mensagem. Pode repetir?';
   } catch (error) {
-    logger.error({ msg: 'Erro no Gemini', error });
+    logger.error({ msg: 'Erro no OpenAI', error });
     return 'Ops, tive um probleminha técnico. Pode tentar de novo em alguns segundos?';
   }
 }

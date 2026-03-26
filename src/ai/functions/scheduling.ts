@@ -1,4 +1,3 @@
-import { Type } from '@google/genai';
 import { PrismaClient } from '@prisma/client';
 import { bookAppointment, bookAppointmentByName, cancelAppointment, rescheduleAppointment, getClientAppointments } from '../../services/appointment';
 import { notifyProfessional, notifyCancellation, notifyReschedule } from '../../services/notification';
@@ -9,47 +8,24 @@ import { logger } from '../../utils/logger';
 const prisma = new PrismaClient();
 
 /**
- * Declaracoes de funcoes de agendamento para o Gemini
+ * Declaracoes de funcoes de agendamento (JSON Schema para OpenAI)
+ * Versao para Instagram (client_phone obrigatorio — precisa pedir)
  */
 export const schedulingFunctionDeclarations = [
   {
     name: 'book_appointment',
     description: 'Finaliza e confirma um agendamento. Use SOMENTE apos a cliente ter confirmado todos os detalhes. Aceita nomes do servico e profissional (preferivel) OU IDs numericos.',
     parameters: {
-      type: Type.OBJECT,
+      type: 'object' as const,
       properties: {
-        service_name: {
-          type: Type.STRING,
-          description: 'Nome do servico (ex: "Manutencao Unha Gel", "Corte (a partir de)")',
-        },
-        professional_name: {
-          type: Type.STRING,
-          description: 'Nome da profissional (ex: "LARISSA", "RAI")',
-        },
-        service_id: {
-          type: Type.NUMBER,
-          description: 'ID do servico (opcional, se tiver do check_availability)',
-        },
-        professional_id: {
-          type: Type.NUMBER,
-          description: 'ID da profissional (opcional, se tiver do check_availability)',
-        },
-        client_phone: {
-          type: Type.STRING,
-          description: 'Telefone da cliente com DDD',
-        },
-        date: {
-          type: Type.STRING,
-          description: 'Data no formato YYYY-MM-DD',
-        },
-        time: {
-          type: Type.STRING,
-          description: 'Horario no formato HH:mm',
-        },
-        client_name: {
-          type: Type.STRING,
-          description: 'Nome da cliente (se souber)',
-        },
+        service_name: { type: 'string' as const, description: 'Nome do servico (ex: "Manutencao Unha Gel", "Corte (a partir de)")' },
+        professional_name: { type: 'string' as const, description: 'Nome da profissional (ex: "LARISSA", "RAI")' },
+        service_id: { type: 'number' as const, description: 'ID do servico (opcional, se tiver do check_availability)' },
+        professional_id: { type: 'number' as const, description: 'ID da profissional (opcional, se tiver do check_availability)' },
+        client_phone: { type: 'string' as const, description: 'Telefone da cliente com DDD' },
+        date: { type: 'string' as const, description: 'Data no formato YYYY-MM-DD' },
+        time: { type: 'string' as const, description: 'Horario no formato HH:mm' },
+        client_name: { type: 'string' as const, description: 'Nome da cliente (se souber)' },
       },
       required: ['client_phone', 'date', 'time'],
     },
@@ -58,16 +34,10 @@ export const schedulingFunctionDeclarations = [
     name: 'get_client_appointments',
     description: 'Lista os agendamentos futuros de uma cliente. Use quando a cliente quiser ver, cancelar ou reagendar seus horarios.',
     parameters: {
-      type: Type.OBJECT,
+      type: 'object' as const,
       properties: {
-        client_phone: {
-          type: Type.STRING,
-          description: 'Telefone da cliente',
-        },
-        status: {
-          type: Type.STRING,
-          description: 'Filtrar por status: "CONFIRMED", "CANCELLED", "COMPLETED". Se nao informar, mostra apenas confirmados.',
-        },
+        client_phone: { type: 'string' as const, description: 'Telefone da cliente' },
+        status: { type: 'string' as const, description: 'Filtrar por status: "CONFIRMED", "CANCELLED", "COMPLETED". Se nao informar, mostra apenas confirmados.' },
       },
       required: ['client_phone'],
     },
@@ -76,16 +46,10 @@ export const schedulingFunctionDeclarations = [
     name: 'cancel_appointment',
     description: 'Cancela um agendamento existente pelo ID. Primeiro use get_client_appointments para encontrar o ID.',
     parameters: {
-      type: Type.OBJECT,
+      type: 'object' as const,
       properties: {
-        appointment_id: {
-          type: Type.NUMBER,
-          description: 'ID do agendamento a cancelar',
-        },
-        reason: {
-          type: Type.STRING,
-          description: 'Motivo do cancelamento (opcional)',
-        },
+        appointment_id: { type: 'number' as const, description: 'ID do agendamento a cancelar' },
+        reason: { type: 'string' as const, description: 'Motivo do cancelamento (opcional)' },
       },
       required: ['appointment_id'],
     },
@@ -94,20 +58,11 @@ export const schedulingFunctionDeclarations = [
     name: 'reschedule_appointment',
     description: 'Reagenda um agendamento existente para nova data e horario. Primeiro use get_client_appointments para encontrar o ID.',
     parameters: {
-      type: Type.OBJECT,
+      type: 'object' as const,
       properties: {
-        appointment_id: {
-          type: Type.NUMBER,
-          description: 'ID do agendamento a reagendar',
-        },
-        new_date: {
-          type: Type.STRING,
-          description: 'Nova data no formato YYYY-MM-DD',
-        },
-        new_time: {
-          type: Type.STRING,
-          description: 'Novo horario no formato HH:mm',
-        },
+        appointment_id: { type: 'number' as const, description: 'ID do agendamento a reagendar' },
+        new_date: { type: 'string' as const, description: 'Nova data no formato YYYY-MM-DD' },
+        new_time: { type: 'string' as const, description: 'Novo horario no formato HH:mm' },
       },
       required: ['appointment_id', 'new_date', 'new_time'],
     },
@@ -116,21 +71,42 @@ export const schedulingFunctionDeclarations = [
     name: 'save_client_name',
     description: 'Salva o nome da cliente no cadastro, vinculado ao telefone. Chame SEMPRE que a cliente disser o nome dela pela primeira vez na conversa. Isso faz com que nas proximas conversas voce ja saiba o nome dela.',
     parameters: {
-      type: Type.OBJECT,
+      type: 'object' as const,
       properties: {
-        client_phone: {
-          type: Type.STRING,
-          description: 'Telefone da cliente',
-        },
-        client_name: {
-          type: Type.STRING,
-          description: 'Nome da cliente como ela disse',
-        },
+        client_phone: { type: 'string' as const, description: 'Telefone da cliente' },
+        client_name: { type: 'string' as const, description: 'Nome da cliente como ela disse' },
       },
       required: ['client_phone', 'client_name'],
     },
   },
 ];
+
+/**
+ * Versao WhatsApp: client_phone NAO e required (injetado automaticamente pelo sistema).
+ * Isso impede o modelo de pedir o telefone para a cliente.
+ */
+export const schedulingFunctionDeclarationsWhatsApp = schedulingFunctionDeclarations.map(decl => {
+  const clone = JSON.parse(JSON.stringify(decl));
+  // Remover client_phone do required
+  if (clone.parameters?.required) {
+    clone.parameters.required = clone.parameters.required.filter((r: string) => r !== 'client_phone');
+  }
+  // Atualizar description do client_phone para deixar claro que é automático
+  if (clone.parameters?.properties?.client_phone) {
+    clone.parameters.properties.client_phone.description = 'PREENCHIDO AUTOMATICAMENTE — nao peca, nao informe. O sistema injeta o telefone do WhatsApp.';
+  }
+  // Atualizar description das funções para reforçar
+  if (clone.name === 'get_client_appointments') {
+    clone.description += ' No WhatsApp, chame direto sem pedir telefone — o sistema preenche automaticamente.';
+  }
+  if (clone.name === 'book_appointment') {
+    clone.description += ' No WhatsApp, nao peca o telefone — e preenchido automaticamente.';
+  }
+  if (clone.name === 'save_client_name') {
+    clone.description += ' No WhatsApp, nao peca o telefone — e preenchido automaticamente.';
+  }
+  return clone;
+});
 
 /**
  * Executa uma funcao de agendamento

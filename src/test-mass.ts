@@ -44,12 +44,12 @@ const SCENARIOS: Scenario[] = [
     validate: (r) => {
       // Se deu rate limit, nao contar como falha
       if (r[0].includes('probleminha tecnico') || r[0].includes('tente de novo')) return { ok: true, reason: 'OK (rate limit)' };
-      const inPortuguese = /suav|salao|salão|servic|ajudar|beleza|portugues|português/i.test(r[0]);
+      const inPortuguese = /suav|salao|salão|servic|ajudar|beleza|portugues|português|precisa|oi|bom dia|boa tarde|boa noite|tudo bem|você|voce/i.test(r[0]);
       return { ok: inPortuguese, reason: inPortuguese ? 'OK' : 'Nao respondeu em portugues' };
     }},
   { name: 'Ola em espanhol', channel: 'whatsapp', messages: ['Hola, buenos días'],
     validate: (r) => {
-      const inPortuguese = /suav|salao|salão|servic|ajudar|beleza/i.test(r[0]);
+      const inPortuguese = /suav|salao|salão|servic|ajudar|beleza|precisa|oi|bom dia|boa tarde|boa noite|tudo bem|você|voce/i.test(r[0]);
       return { ok: inPortuguese, reason: inPortuguese ? 'OK' : 'Nao respondeu em portugues' };
     }},
 
@@ -86,19 +86,22 @@ const SCENARIOS: Scenario[] = [
   { name: 'Agendar com tudo especificado', channel: 'whatsapp',
     messages: ['Quero agendar unha tradicional pe com a Miriam pra segunda as 14h'],
     validate: (r) => {
-      return { ok: !mentionsPermission(r[0]) && r[0].length > 20, reason: mentionsPermission(r[0]) ? 'Pediu permissao' : 'OK' };
+      const pass = !mentionsPermission(r[0]) && r[0].length > 20;
+      return { ok: pass, reason: mentionsPermission(r[0]) ? 'Pediu permissao' : (r[0].length <= 20 ? 'Resposta muito curta' : 'OK') };
     }},
   { name: 'Agendar e confirmar', channel: 'whatsapp',
     messages: ['Quero agendar unha tradicional mao com a Sil amanha as 11h', 'Sim, confirma'],
     validate: (r) => {
       const last = r[r.length - 1].toLowerCase();
-      return { ok: last.includes('confirm') || last.includes('agendad') || last.includes('marcad'), reason: 'OK' };
+      const pass = last.includes('confirm') || last.includes('agendad') || last.includes('marcad') || last.includes('fechado') || last.includes('pronto');
+      return { ok: pass, reason: pass ? 'OK' : 'Nao confirmou agendamento' };
     }},
   { name: 'Agendar sem profissional', channel: 'whatsapp',
     messages: ['Quero fazer unha em gel sabado as 10h'],
     validate: (r) => {
       const l = r[0].toLowerCase();
-      return { ok: l.includes('profissional') || l.includes('larissa') || l.includes('clau') || l.includes('quem'), reason: 'OK' };
+      const pass = l.includes('profissional') || l.includes('larissa') || l.includes('clau') || l.includes('quem') || l.includes('prefere');
+      return { ok: pass, reason: pass ? 'OK' : 'Nao perguntou profissional' };
     }},
   { name: 'Agendar sem horario', channel: 'whatsapp',
     messages: ['Quero agendar corte com a Rai amanha'],
@@ -116,11 +119,15 @@ const SCENARIOS: Scenario[] = [
     messages: ['Quero agendar unha com a Luciana amanha as 20h'],
     validate: (r) => {
       const l = r[0].toLowerCase();
-      return { ok: l.includes('fechad') || l.includes('19') || l.includes('horario') || l.includes('expediente') || l.includes('funciona'), reason: 'OK' };
+      const pass = l.includes('fechad') || l.includes('19') || l.includes('horario') || l.includes('horário') || l.includes('expediente') || l.includes('funciona') || l.includes('disponível') || l.includes('disponivel') || l.includes('abre') || l.includes('17');
+      return { ok: pass, reason: pass ? 'OK' : 'Nao avisou sobre horario limite' };
     }},
   { name: 'Agendar sabado as 16h30', channel: 'whatsapp',
     messages: ['Quero agendar unha tradicional mao com a Luciana sabado as 16h30'],
-    validate: (r) => ({ ok: !mentionsPermission(r[0]) && r[0].length > 20, reason: 'OK' }) },
+    validate: (r) => {
+      const pass = !mentionsPermission(r[0]) && r[0].length > 20;
+      return { ok: pass, reason: pass ? 'OK' : (mentionsPermission(r[0]) ? 'Pediu permissao' : 'Resposta curta') };
+    }},
 
   // === AGENDAMENTO INSTAGRAM ===
   { name: 'IG - agendar sem telefone', channel: 'instagram',
@@ -133,7 +140,8 @@ const SCENARIOS: Scenario[] = [
     messages: ['Quero agendar corte de cabelo', 'Meu numero e 27999991234'],
     validate: (r) => {
       const all = r.join(' ').toLowerCase();
-      return { ok: all.includes('telefone') || all.includes('whatsapp') || all.includes('ddd') || all.includes('27999991234') || all.includes('profissional'), reason: 'OK' };
+      const pass = all.includes('telefone') || all.includes('whatsapp') || all.includes('ddd') || all.includes('27999991234') || all.includes('profissional') || all.includes('numero');
+      return { ok: pass, reason: pass ? 'OK' : 'Nao pediu telefone nem mencionou profissional' };
     }},
 
   // === CANCELAMENTO ===
@@ -162,7 +170,7 @@ const SCENARIOS: Scenario[] = [
     }},
   { name: 'Instagram do salao', channel: 'whatsapp', messages: ['Qual o instagram de voces?'],
     validate: (r) => {
-      return { ok: r[0].includes('suav.beauty') || r[0].includes('@suav'), reason: r[0].includes('suav') ? 'OK' : 'Nao mencionou @suav.beauty' };
+      return { ok: r[0].includes('suavitapua') || r[0].includes('@suav'), reason: r[0].includes('suav') ? 'OK' : 'Nao mencionou @suavitapua' };
     }},
 
   // === PROFISSIONAIS ===

@@ -14,6 +14,54 @@ const conversations = new Map<string, {
   lastActivity: Date;
 }>();
 
+// Conversas escaladas para a gerência (reclamações)
+// phone → { reason, escalatedAt }
+const escalatedConversations = new Map<string, {
+  reason: string;
+  escalatedAt: Date;
+  clientName?: string;
+}>();
+
+/**
+ * Marca conversa como escalada (reclamação encaminhada para gerência)
+ * Enquanto escalada, o bot NÃO responde mais nesse canal.
+ */
+export function escalateConversation(phone: string, reason: string, clientName?: string): void {
+  escalatedConversations.set(phone, {
+    reason,
+    escalatedAt: new Date(),
+    clientName,
+  });
+  logger.info({ msg: 'Conversa escalada para gerência', phone, reason });
+}
+
+/**
+ * Verifica se conversa está escalada
+ */
+export function isEscalated(phone: string): boolean {
+  return escalatedConversations.has(phone);
+}
+
+/**
+ * Resolve uma escalação (admin já tratou)
+ */
+export function resolveEscalation(phone: string): boolean {
+  const had = escalatedConversations.has(phone);
+  escalatedConversations.delete(phone);
+  if (had) logger.info({ msg: 'Escalação resolvida', phone });
+  return had;
+}
+
+/**
+ * Lista todas as escalações ativas
+ */
+export function getActiveEscalations(): Array<{ phone: string; reason: string; escalatedAt: Date; clientName?: string }> {
+  return Array.from(escalatedConversations.entries()).map(([phone, data]) => ({
+    phone,
+    ...data,
+  }));
+}
+
 const MAX_HISTORY = 20;           // Max mensagens no historico
 const TIMEOUT_MS = 4 * 60 * 60 * 1000; // 4 horas timeout
 

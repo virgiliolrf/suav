@@ -16,8 +16,8 @@ async function main() {
   logger.info('Inicializando...');
 
   // Validar configuracoes essenciais
-  if (!env.GEMINI_API_KEY) {
-    logger.error('GEMINI_API_KEY nao configurada no .env');
+  if (!env.OPENAI_API_KEY) {
+    logger.error('OPENAI_API_KEY nao configurada no .env');
     process.exit(1);
   }
 

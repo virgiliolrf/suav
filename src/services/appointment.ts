@@ -124,7 +124,7 @@ export async function bookAppointment(params: {
 
 /**
  * Cria agendamento usando NOMES (fuzzy matching) em vez de IDs
- * Resolve o problema do Gemini inventar IDs entre turnos de conversa
+ * Resolve o problema do LLM inventar IDs entre turnos de conversa
  */
 export async function bookAppointmentByName(params: {
   serviceName: string;

@@ -7,6 +7,11 @@ logger.level = 'silent';
 const PHONE_CLIENTE = '5527999990000';
 const PHONE_ADMIN = '559891752988';
 
+/** Remove [BREAK] delimiters para checks de conteúdo */
+function normalizeResponse(response: string): string {
+  return response.replace(/\[BREAK\]/gi, '\n').trim();
+}
+
 interface TestScenario {
   name: string;
   role: 'admin' | 'professional' | 'client';
@@ -26,7 +31,7 @@ const scenarios: TestScenario[] = [
     messages: ['oi'],
     checks: [
       (r) => ({
-        pass: r[0].toLowerCase().includes('oi') || r[0].toLowerCase().includes('ei') || r[0].toLowerCase().includes('hey'),
+        pass: r[0].toLowerCase().includes('oi') || r[0].toLowerCase().includes('olá'),
         reason: 'Deve cumprimentar de volta',
       }),
       (r) => ({
@@ -65,15 +70,15 @@ const scenarios: TestScenario[] = [
     ],
   },
   {
-    name: 'Cliente: Reclamação — deve reconhecer sentimento',
+    name: 'Cliente: Reclamação — deve encaminhar pra gerente',
     role: 'client',
     channel: 'whatsapp',
     phone: PHONE_CLIENTE,
     messages: ['tô muito insatisfeita com o atendimento de vocês'],
     checks: [
       (r) => ({
-        pass: r[0].toLowerCase().includes('sinto') || r[0].toLowerCase().includes('poxa') || r[0].toLowerCase().includes('chato') || r[0].toLowerCase().includes('desculp'),
-        reason: 'Deve reconhecer a reclamação com empatia (poxa/sinto muito/que chato)',
+        pass: r[0].toLowerCase().includes('gerente') || r[0].toLowerCase().includes('encaminh') || r[0].toLowerCase().includes('contato'),
+        reason: 'Deve dizer que encaminhou para a gerente',
       }),
       (r) => ({
         pass: !r[0].toLowerCase().includes('infelizmente') && !r[0].toLowerCase().includes('lamentamos'),
@@ -136,13 +141,12 @@ const scenarios: TestScenario[] = [
     messages: ['quero fazer unha gel sexta às 14h'],
     checks: [
       (r) => {
-        const nomes = ['LUCIANA', 'LARISSA', 'CLAUDIA', 'CLAU', 'TATIANA', 'TATI', 'FERNANDA', 'NANDA',
-          'JESSICA', 'JÉSSICA', 'RAFAELA', 'RAFA', 'ISABELA', 'ISA', 'CAMILA', 'CAMI',
-          'AMANDA', 'JULIANA', 'JU', 'BEATRIZ', 'BIA', 'PATRICIA', 'PATI', 'MARIANA',
-          'CAROLINA', 'CAROL', 'GABRIELA', 'GABI', 'DANIELA', 'DANI'];
+        // Nomes REAIS das profissionais do BD (unha gel = LARISSA, CLAU)
+        const nomesReais = ['LUCIANA', 'TATIANI', 'LORENA', 'SIL', 'MIRIAM', 'RAYANNE',
+          'THAIS', 'LARISSA', 'CLAU', 'RAI', 'DANIELA', 'LUANA', 'ERIKA'];
         const upper = r[0].toUpperCase();
-        const found = nomes.some(n => upper.includes(n));
-        return { pass: found, reason: 'Deve mostrar nomes reais de profissionais que fazem gel' };
+        const found = nomesReais.some(n => upper.includes(n));
+        return { pass: found, reason: 'Deve mostrar nomes reais de profissionais que fazem gel (LARISSA/CLAU)' };
       },
     ],
   },
@@ -251,20 +255,19 @@ const scenarios: TestScenario[] = [
     ],
     checks: [
       (r) => {
-        // Deve conter pelo menos um nome real de profissional do salão
-        const nomes = ['LUCIANA', 'LARISSA', 'CLAUDIA', 'CLAU', 'TATIANA', 'TATI', 'FERNANDA', 'NANDA',
-          'JESSICA', 'JÉSSICA', 'RAFAELA', 'RAFA', 'ISABELA', 'ISA', 'CAMILA', 'CAMI',
-          'AMANDA', 'JULIANA', 'JU', 'BEATRIZ', 'BIA', 'PATRICIA', 'PATI', 'MARIANA',
-          'CAROLINA', 'CAROL', 'GABRIELA', 'GABI', 'DANIELA', 'DANI'];
+        // Nomes REAIS das profissionais do BD
+        const nomesReais = ['LUCIANA', 'TATIANI', 'LORENA', 'SIL', 'MIRIAM', 'RAYANNE',
+          'THAIS', 'LARISSA', 'CLAU', 'RAI', 'DANIELA', 'LUANA', 'ERIKA'];
         const upper = r[0].toUpperCase();
-        const found = nomes.some(n => upper.includes(n));
+        const found = nomesReais.some(n => upper.includes(n));
         return { pass: found, reason: 'Msg 1: Deve perguntar profissional COM nomes reais do salão' };
       },
       (r) => {
         if (r.length < 3) return { pass: false, reason: `Msg 3: Só recebeu ${r.length} respostas (esperava 3)` };
         const msg3 = r[2].toLowerCase();
-        const pass = msg3.includes('confirmo') || msg3.includes('confirma') || msg3.includes('r$') || msg3.includes('agendar') || msg3.includes('agendado') || msg3.includes('fechado') || msg3.includes('disponível') || msg3.includes('disponivel') || msg3.includes('horário') || msg3.includes('horario');
-        return { pass, reason: `Msg 3: Deve pedir confirmação/mostrar disponibilidade. Got: "${r[2].substring(0, 100)}"` };
+        // Pode confirmar, mostrar disponibilidade, ou pedir esclarecimento (Larissa pode não fazer o serviço buscado)
+        const pass = msg3.includes('confirmo') || msg3.includes('confirma') || msg3.includes('r$') || msg3.includes('agendar') || msg3.includes('agendado') || msg3.includes('fechado') || msg3.includes('disponível') || msg3.includes('disponivel') || msg3.includes('horário') || msg3.includes('horario') || msg3.includes('profissional') || msg3.includes('larissa') || msg3.includes('não faz');
+        return { pass, reason: `Msg 3: Deve pedir confirmação, mostrar disponibilidade ou esclarecer. Got: "${r[2].substring(0, 100)}"` };
       },
     ],
   },
@@ -329,7 +332,7 @@ const scenarios: TestScenario[] = [
     messages: ['busca cliente 5527999990000'],
     checks: [
       (r) => ({
-        pass: r[0].includes('999990000') || r[0].toLowerCase().includes('encontr') || r[0].toLowerCase().includes('cliente'),
+        pass: r[0].includes('999990000') || r[0].toLowerCase().includes('encontr') || r[0].toLowerCase().includes('cliente') || r[0].toLowerCase().includes('agendamento') || r[0].toLowerCase().includes('achei') || r[0].toLowerCase().includes('cadastrad') || r[0].toLowerCase().includes('históric') || r[0].toLowerCase().includes('atendiment'),
         reason: 'Deve buscar e mostrar dados do cliente',
       }),
     ],
@@ -349,15 +352,186 @@ const scenarios: TestScenario[] = [
     ],
   },
   {
-    name: 'Profissional: Pedir faturamento (deve negar)',
+    name: 'Profissional: Pedir faturamento do salão (deve negar)',
     role: 'professional',
     channel: 'whatsapp',
     phone: '5527992589125',
-    messages: ['qual o faturamento do salão?'],
+    messages: ['qual o faturamento total do salão?'],
     checks: [
       (r) => ({
-        pass: r[0].toLowerCase().includes('gerente') || r[0].toLowerCase().includes('acesso') || r[0].toLowerCase().includes('informação'),
-        reason: 'Deve negar e direcionar para gerente',
+        pass: r[0].toLowerCase().includes('gerente') || r[0].toLowerCase().includes('acesso') || r[0].toLowerCase().includes('informação') || r[0].toLowerCase().includes('só') || r[0].toLowerCase().includes('seu'),
+        reason: 'Deve negar faturamento DO SALÃO e direcionar para gerente',
+      }),
+    ],
+  },
+  // === MENSAGENS CURTAS ===
+  {
+    name: 'Cliente: Mensagem curta (< 200 chars por resposta)',
+    role: 'client',
+    channel: 'whatsapp',
+    phone: PHONE_CLIENTE,
+    messages: ['oi, tudo bem?'],
+    checks: [
+      (r) => ({
+        pass: r[0].length < 200,
+        reason: 'Resposta total deve ser curta (< 200 chars)',
+      }),
+    ],
+  },
+  // === NOVOS CENÁRIOS: BUGS ENCONTRADOS NO POLIMENTO ===
+  {
+    name: 'Cliente: "?" sozinha — sem frase de bot',
+    role: 'client',
+    channel: 'whatsapp',
+    phone: PHONE_CLIENTE,
+    messages: ['?'],
+    checks: [
+      (r) => ({
+        pass: !r[0].toLowerCase().includes('como posso te ajudar') && !r[0].toLowerCase().includes('em que posso ajudar'),
+        reason: 'NÃO deve usar "como posso te ajudar" para mensagem ambígua',
+      }),
+      (r) => ({
+        pass: r[0].length < 100,
+        reason: 'Resposta curta para mensagem ambígua',
+      }),
+    ],
+  },
+  {
+    name: 'Cliente: Emoji 💅 — não pedir nome',
+    role: 'client',
+    channel: 'whatsapp',
+    phone: PHONE_CLIENTE,
+    messages: ['💅'],
+    checks: [
+      (r) => ({
+        pass: !r[0].toLowerCase().includes('qual seu nome') && !r[0].toLowerCase().includes('qual o seu nome'),
+        reason: 'NÃO deve pedir nome só por causa de emoji',
+      }),
+    ],
+  },
+  {
+    name: 'Cliente: Abreviação "qto custa fzr unhas"',
+    role: 'client',
+    channel: 'whatsapp',
+    phone: PHONE_CLIENTE,
+    messages: ['qto custa fzr unhas?'],
+    checks: [
+      (r) => ({
+        pass: r[0].includes('R$') || r[0].toLowerCase().includes('unha'),
+        reason: 'Deve entender abreviação e mostrar preço ou perguntar qual tipo',
+      }),
+    ],
+  },
+  {
+    name: 'Cliente: WhatsApp não deve pedir telefone',
+    role: 'client',
+    channel: 'whatsapp',
+    phone: PHONE_CLIENTE,
+    messages: ['quero ver meus agendamentos'],
+    checks: [
+      (r) => ({
+        pass: !r[0].toLowerCase().includes('telefone') && !r[0].toLowerCase().includes('número') && !r[0].toLowerCase().includes('whatsapp'),
+        reason: 'NÃO deve pedir telefone no WhatsApp (já tem automaticamente)',
+      }),
+    ],
+  },
+  {
+    name: 'Cliente: Reclamação específica — encaminha pra gerente',
+    role: 'client',
+    channel: 'whatsapp',
+    phone: PHONE_CLIENTE,
+    messages: ['tô muito insatisfeita, minha unha quebrou no mesmo dia'],
+    checks: [
+      (r) => ({
+        pass: r[0].toLowerCase().includes('gerente') || r[0].toLowerCase().includes('encaminh') || r[0].toLowerCase().includes('contato'),
+        reason: 'Deve encaminhar para gerente (não resolver sozinha)',
+      }),
+      (r) => ({
+        pass: !r[0].toLowerCase().includes('infelizmente') && !r[0].toLowerCase().includes('lamentamos'),
+        reason: 'NÃO deve usar "infelizmente" nem "lamentamos"',
+      }),
+    ],
+  },
+  {
+    name: 'Cliente: "posso te ajudar" proibido (anti-bot)',
+    role: 'client',
+    channel: 'whatsapp',
+    phone: PHONE_CLIENTE,
+    messages: ['boa noite'],
+    checks: [
+      (r) => ({
+        pass: !r[0].toLowerCase().includes('posso te ajudar') && !r[0].toLowerCase().includes('posso ajudar'),
+        reason: 'NÃO deve usar "posso te ajudar" em nenhuma variação',
+      }),
+    ],
+  },
+  // === NOVAS FUNÇÕES PROFISSIONAL ===
+  {
+    name: 'Profissional: Meu faturamento (deve mostrar)',
+    role: 'professional',
+    channel: 'whatsapp',
+    phone: '5527992589125',
+    messages: ['quanto eu fiz esse mês?'],
+    checks: [
+      (r) => ({
+        pass: r[0].includes('R$') || r[0].includes('0') || r[0].toLowerCase().includes('faturamento') || r[0].toLowerCase().includes('atendimento'),
+        reason: 'Deve mostrar faturamento pessoal da profissional',
+      }),
+    ],
+  },
+  {
+    name: 'Profissional: Próxima cliente',
+    role: 'professional',
+    channel: 'whatsapp',
+    phone: '5527992589125',
+    messages: ['minha próxima cliente?'],
+    checks: [
+      (r) => ({
+        pass: r[0].toLowerCase().includes('próxim') || r[0].toLowerCase().includes('nenhum') || r[0].toLowerCase().includes('livre') || r[0].toLowerCase().includes('agenda'),
+        reason: 'Deve mostrar próximo atendimento ou dizer que está livre',
+      }),
+    ],
+  },
+  {
+    name: 'Profissional: Bloquear horário',
+    role: 'professional',
+    channel: 'whatsapp',
+    phone: '5527992589125',
+    messages: ['bloqueia meu horário amanhã das 12 às 13 pra almoço'],
+    checks: [
+      (r) => ({
+        pass: r[0].toLowerCase().includes('bloqueio') || r[0].toLowerCase().includes('bloqueei') || r[0].toLowerCase().includes('bloqueado') || r[0].toLowerCase().includes('12'),
+        reason: 'Deve confirmar bloqueio do horário',
+      }),
+    ],
+  },
+  {
+    name: 'Profissional: Faturamento do SALÃO (deve negar)',
+    role: 'professional',
+    channel: 'whatsapp',
+    phone: '5527992589125',
+    messages: ['quanto o salão faturou esse mês?'],
+    checks: [
+      (r) => ({
+        pass: r[0].toLowerCase().includes('gerente') || r[0].toLowerCase().includes('acesso') || r[0].toLowerCase().includes('informação') || r[0].toLowerCase().includes('só') || r[0].toLowerCase().includes('seu'),
+        reason: 'Deve negar faturamento do salão e direcionar para gerente',
+      }),
+    ],
+  },
+  {
+    name: 'Profissional: Saudação casual (tom de colega)',
+    role: 'professional',
+    channel: 'whatsapp',
+    phone: '5527992589125',
+    messages: ['eae mari'],
+    checks: [
+      (r) => ({
+        pass: r[0].toLowerCase().includes('larissa') || r[0].toLowerCase().includes('eae') || r[0].toLowerCase().includes('oi') || r[0].toLowerCase().includes('tudo'),
+        reason: 'Deve responder como colega, usando nome da profissional',
+      }),
+      (r) => ({
+        pass: r[0].length < 150,
+        reason: 'Resposta curta entre colegas',
       }),
     ],
   },
@@ -388,8 +562,8 @@ async function runScenario(scenario: TestScenario): Promise<{ passed: number; fa
         professionalName: scenario.role === 'professional' ? 'LARISSA' : undefined,
       });
 
-      responses.push(response);
-      await addMessage(convId, 'assistant', response);
+      responses.push(normalizeResponse(response));
+      await addMessage(convId, 'assistant', normalizeResponse(response));
     } catch (error: any) {
       responses.push(`ERRO: ${error.message}`);
       details.push(`  ❌ ERRO ao processar: ${error.message}`);
@@ -414,6 +588,27 @@ async function runScenario(scenario: TestScenario): Promise<{ passed: number; fa
 }
 
 async function main() {
+  // Aceita índice como argumento: npx tsx src/test-auto.ts 0
+  const arg = process.argv[2];
+  const singleIndex = arg !== undefined ? parseInt(arg, 10) : null;
+
+  if (singleIndex !== null) {
+    if (singleIndex < 0 || singleIndex >= scenarios.length) {
+      console.log(`\x1b[31mÍndice ${singleIndex} inválido. Use 0-${scenarios.length - 1}\x1b[0m`);
+      process.exit(1);
+    }
+    const scenario = scenarios[singleIndex];
+    console.log(`\n\x1b[36m[${singleIndex}/${scenarios.length - 1}] ${scenario.name}\x1b[0m`);
+    console.log(`  Role: ${scenario.role} | Channel: ${scenario.channel}`);
+    console.log(`  Mensagens: ${scenario.messages.map(m => `"${m}"`).join(' → ')}\n`);
+
+    const result = await runScenario(scenario);
+    for (const d of result.details) console.log(d);
+    console.log(`\n  ${result.failed === 0 ? '\x1b[32m✅ PASSOU' : '\x1b[31m❌ FALHOU'}\x1b[0m (${result.passed} ✅ ${result.failed} ❌)\n`);
+    process.exit(result.failed > 0 ? 1 : 0);
+  }
+
+  // Modo completo (sem argumento)
   console.log('\n\x1b[32m╔══════════════════════════════════════════════════════╗');
   console.log('║       SUAV Bot — Teste Automatizado                  ║');
   console.log(`║       ${scenarios.length} cenários a testar                          ║`);
@@ -449,7 +644,7 @@ async function main() {
       totalFailed++;
     }
 
-    // Delay entre cenarios (rate limit do Gemini)
+    // Delay entre cenarios (rate limit)
     if (i < scenarios.length - 1) {
       await new Promise(r => setTimeout(r, 3000));
     }

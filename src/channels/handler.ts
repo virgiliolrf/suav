@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { processMessage } from '../ai/agent';
-import { addMessage, getHistory } from '../conversation/manager';
+import { addMessage, getHistory, isEscalated } from '../conversation/manager';
 import { isAdminPhone, isProfessionalPhone } from '../conversation/context';
 import { logger } from '../utils/logger';
 import type { ChannelType, ChannelSender, IncomingMessage } from './types';
@@ -16,6 +16,42 @@ const MIN_INTERVAL_MS = 2000;
 const processingQueue = new Map<string, boolean>();
 
 const MEDIA_REPLY = 'Oi! Recebi sua mídia, mas por enquanto só consigo responder texto por aqui 😊\nPode me contar o que precisa em texto?';
+
+/**
+ * Calcula delay de digitação proporcional ao tamanho da mensagem
+ * Simula tempo de digitação real
+ */
+function calculateTypingDelay(text: string): number {
+  const baseDelay = 800;
+  const perChar = 30;
+  const maxDelay = 3000;
+  return Math.min(baseDelay + text.length * perChar, maxDelay);
+}
+
+/**
+ * Divide a resposta em segmentos e envia com delay de digitação entre eles
+ * Simula comportamento real de uma pessoa no WhatsApp
+ */
+async function splitAndSend(
+  sender: ChannelSender,
+  recipientId: string,
+  response: string
+): Promise<void> {
+  const segments = response
+    .split('[BREAK]')
+    .map(s => s.trim())
+    .filter(s => s.length > 0);
+
+  for (let i = 0; i < segments.length; i++) {
+    if (i > 0) {
+      // Simula digitação entre mensagens
+      await sender.sendTyping(recipientId);
+      await new Promise(r => setTimeout(r, calculateTypingDelay(segments[i])));
+    }
+    await sender.stopTyping(recipientId);
+    await sender.sendText(recipientId, segments[i]);
+  }
+}
 
 /**
  * Handler unificado de mensagens — funciona com qualquer canal
@@ -58,6 +94,23 @@ export async function handleIncomingMessage(
     if (sanitizedText === '__media__') {
       await sender.sendText(message.senderId, MEDIA_REPLY);
       return;
+    }
+
+    // Verificar se conversa está escalada (reclamação encaminhada para gerência)
+    // Admin e profissional nunca são bloqueados
+    if (message.senderPhone && isEscalated(conversationId)) {
+      const isAdmin = await isAdminPhone(message.senderPhone);
+      const isProfessional = await isProfessionalPhone(message.senderPhone);
+      if (!isAdmin && !isProfessional) {
+        logger.info({ msg: 'Mensagem ignorada — conversa escalada', conversationId });
+        // Salvar no histórico para a gerente ver depois
+        await addMessage(conversationId, 'user', sanitizedText);
+        await sender.sendText(
+          message.senderId,
+          'Sua solicitação já está com nossa gerente. Em breve ela entra em contato com você! 🙏'
+        );
+        return;
+      }
     }
 
     // Mostrar "digitando..."
@@ -121,7 +174,7 @@ export async function handleIncomingMessage(
     // Salvar mensagem do usuario
     await addMessage(conversationId, 'user', sanitizedText);
 
-    // Processar com Gemini
+    // Processar com IA
     const response = await processMessage({
       userMessage: sanitizedText,
       conversationHistory: history,
@@ -136,12 +189,12 @@ export async function handleIncomingMessage(
       professionalName: professionalInfo?.name,
     });
 
-    // Salvar resposta
-    await addMessage(conversationId, 'assistant', response);
+    // Salvar resposta no histórico SEM delimitadores
+    const cleanResponse = response.replace(/\[BREAK\]/gi, '\n').trim();
+    await addMessage(conversationId, 'assistant', cleanResponse);
 
-    // Parar "digitando..." e enviar resposta
-    await sender.stopTyping(message.senderId);
-    await sender.sendText(message.senderId, response);
+    // Enviar resposta em segmentos com delay de digitação
+    await splitAndSend(sender, message.senderId, response);
 
   } catch (error) {
     logger.error({ msg: 'Erro ao processar mensagem', channel: message.channel, conversationId, error });

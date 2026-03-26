@@ -4,6 +4,14 @@ import { logger } from '../utils/logger';
 
 const prisma = new PrismaClient();
 
+/** Converte nome de MAIÚSCULAS para capitalização normal (ex: "THAIS GOMES" → "Thais Gomes") */
+function toDisplayName(name: string): string {
+  return name
+    .split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+}
+
 interface ServiceResult {
   id: number;
   name: string;
@@ -13,10 +21,39 @@ interface ServiceResult {
   professionals: string[];
 }
 
+/** Mapeamento de sinônimos e termos populares para nomes reais de serviços */
+const SYNONYMS: Record<string, string> = {
+  'manicure': 'unha tradicional',
+  'pedicure': 'unha tradicional pe',
+  'mão e pé': 'unha tradicional mao pe',
+  'francesinha': 'unha francesinha',
+  'gel': 'unha gel',
+  'unha de gel': 'unha gel',
+  'fazer unha': 'unha tradicional',
+  'fazer as unhas': 'unha tradicional',
+  'pintar unha': 'unha express esmaltar',
+  'esmalte': 'unha express esmaltar',
+  'chapinha': 'escova chapinha',
+  'babyliss': 'escova chapinha babyliss',
+  'tintura': 'coloracao',
+  'pintar cabelo': 'coloracao',
+  'luzes': 'mechas papelotes',
+  'laser': 'luz pulsada',
+  'massagem': 'massagem relaxante drenagem',
+  'limpeza de pele': 'limpeza de pele hidratacao',
+  'cilios': 'extensao de cilios',
+  'henna': 'coloracao sobrancelha henna',
+  'sombrancelha': 'design de sobrancelhas',
+  'sombracelha': 'design de sobrancelhas',
+};
+
 /**
- * Busca servicos por nome (fuzzy matching)
+ * Busca servicos por nome (fuzzy matching com sinônimos)
  */
 export async function searchServices(query: string, limit: number = 5): Promise<ServiceResult[]> {
+  // Expandir sinônimos
+  const normalizedQuery = normalize(query);
+  const expandedQuery = SYNONYMS[normalizedQuery] || query;
   const services = await prisma.service.findMany({
     where: { active: true },
     include: {
@@ -27,11 +64,31 @@ export async function searchServices(query: string, limit: number = 5): Promise<
     },
   });
 
+  // Prioridade 1: match exato ou parcial no nome normalizado
+  const normalizedExpanded = normalize(expandedQuery);
+  const exactMatches = services.filter(s =>
+    s.normalizedName.includes(normalizedExpanded) || normalizedExpanded.includes(s.normalizedName)
+  );
+
+  if (exactMatches.length > 0) {
+    // Ordenar: matches mais curtos (mais específicos) primeiro
+    exactMatches.sort((a, b) => a.name.length - b.name.length);
+    return exactMatches.slice(0, limit).map((s) => ({
+      id: s.id,
+      name: s.name,
+      price: s.price,
+      durationMinutes: s.durationMinutes,
+      category: s.category.name,
+      professionals: s.professionals.map((ps) => toDisplayName(ps.professional.name)),
+    }));
+  }
+
+  // Prioridade 2: fuzzy com threshold mais restritivo
   const matches = fuzzySearch(
-    query,
+    expandedQuery,
     services,
     (s) => s.name,
-    0.25
+    0.45
   );
 
   return matches.slice(0, limit).map((m) => ({
@@ -40,7 +97,7 @@ export async function searchServices(query: string, limit: number = 5): Promise<
     price: m.item.price,
     durationMinutes: m.item.durationMinutes,
     category: m.item.category.name,
-    professionals: m.item.professionals.map((ps) => ps.professional.name),
+    professionals: m.item.professionals.map((ps) => toDisplayName(ps.professional.name)),
   }));
 }
 
@@ -78,7 +135,7 @@ export async function getServicesByCategory(categoryName: string): Promise<Servi
     price: s.price,
     durationMinutes: s.durationMinutes,
     category: s.category.name,
-    professionals: s.professionals.map((ps) => ps.professional.name),
+    professionals: s.professionals.map((ps) => toDisplayName(ps.professional.name)),
   }));
 }
 
@@ -104,7 +161,7 @@ export async function getServiceById(id: number): Promise<ServiceResult | null> 
     price: service.price,
     durationMinutes: service.durationMinutes,
     category: service.category.name,
-    professionals: service.professionals.map((ps) => ps.professional.name),
+    professionals: service.professionals.map((ps) => toDisplayName(ps.professional.name)),
   };
 }
 
@@ -136,7 +193,7 @@ export async function getProfessionalsForService(serviceName: string): Promise<{
     },
     professionals: profLinks.map((pl) => ({
       id: pl.professional.id,
-      name: pl.professional.name,
+      name: toDisplayName(pl.professional.name),
     })),
   };
 }
@@ -158,11 +215,11 @@ export async function findProfessional(name: string): Promise<{ id: number; name
   );
 
   if (exactMatch) {
-    return { id: exactMatch.id, name: exactMatch.name };
+    return { id: exactMatch.id, name: toDisplayName(exactMatch.name) };
   }
 
   if (matches.length > 0) {
-    return { id: matches[0].item.id, name: matches[0].item.name };
+    return { id: matches[0].item.id, name: toDisplayName(matches[0].item.name) };
   }
 
   return null;
