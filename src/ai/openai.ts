@@ -3,4 +3,4 @@ import { env } from '../config/env';
 
 export const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
 
-export const MODEL_NAME = 'gpt-4.1-nano';
+export const MODEL_NAME = 'gpt-5-nano';
