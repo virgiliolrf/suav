@@ -363,12 +363,7 @@ export async function processMessage(params: {
 
       // Anti-bot: substituir frases de robô que o modelo insiste em usar
       const botReplacements: [RegExp, string][] = [
-        [/como posso te ajudar\??/gi, ''],
-        [/em que posso ajudar\??/gi, ''],
         [/o que (você|vc) precisa\??/gi, ''],
-        [/posso te ajudar com algo( mais)?\??/gi, ''],
-        [/posso ajudar com algo( mais)?\??/gi, ''],
-        [/posso te ajudar a /gi, ''],
         [/precisa de mais alguma coisa\??/gi, ''],
         [/se precisar[^.!?\n]*/gi, ''],
         [/estou à disposição[.!]?/gi, ''],
