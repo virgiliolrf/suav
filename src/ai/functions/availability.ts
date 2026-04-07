@@ -1,4 +1,4 @@
-import { searchServices, getServicesByCategory, getProfessionalsForService, findProfessional } from '../../services/catalog';
+import { searchServices, getServicesByCategory, getProfessionalsForService, findProfessional, isWalkInOnlyService } from '../../services/catalog';
 import { checkProfessionalAvailability, getAvailableSlots } from '../../services/professional';
 
 /**
@@ -17,7 +17,7 @@ export const availabilityFunctionDeclarations = [
         },
         category: {
           type: 'string' as const,
-          description: 'Filtrar por categoria: "Esmalteria", "Cabelos", "Depilação Cera", "Luz Pulsada | Epilação", "Estética"',
+          description: 'Filtrar por categoria: "Esmalteria", "Cabelos"',
         },
       },
     },
@@ -103,6 +103,14 @@ export async function executeAvailabilityFunction(
         return { found: true, services: results };
       }
       if (args.search) {
+        // Verificar se e servico walk-in (presencial) antes de buscar no DB
+        if (isWalkInOnlyService(args.search)) {
+          return {
+            found: false,
+            walk_in_only: true,
+            message: 'Esse servico a gente faz presencialmente aqui no salao, sem agendamento! E so passar que a gente te atende na hora.',
+          };
+        }
         const results = await searchServices(args.search, 8);
         if (results.length === 0) {
           return { found: false, message: 'Nenhum servico encontrado com esse nome. Tente outros termos.' };
@@ -111,12 +119,20 @@ export async function executeAvailabilityFunction(
       }
       // Sem filtro, retorna categorias disponiveis
       return {
-        categories: ['Esmalteria', 'Cabelos', 'Depilação Cera', 'Luz Pulsada | Epilação', 'Estética'],
-        message: 'Temos servicos nessas categorias. Qual te interessa?',
+        categories: ['Esmalteria', 'Cabelos'],
+        message: 'Pelo WhatsApp a gente agenda esmalteria (unha gel) e cabelos. Outros servicos como depilacao, estetica e cilios sao atendidos presencialmente no salao, e so chegar!',
       };
     }
 
     case 'check_service_professionals': {
+      // Verificar walk-in antes de buscar
+      if (isWalkInOnlyService(args.service_name)) {
+        return {
+          found: false,
+          walk_in_only: true,
+          message: 'Esse servico a gente faz presencialmente aqui no salao, sem agendamento! E so passar que a gente te atende na hora.',
+        };
+      }
       const result = await getProfessionalsForService(args.service_name);
       if (!result.service) {
         // Tentar busca fuzzy

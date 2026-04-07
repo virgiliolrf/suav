@@ -393,6 +393,19 @@ export async function processMessage(params: {
       finalText = finalText.replace(/^\[BREAK\]|(\[BREAK\]\s*$)/g, '').trim();
     }
 
+    // [BREAK] safety net: se o modelo não usou [BREAK] e a resposta é longa, inserir automaticamente
+    if (role !== 'admin' && finalText && !finalText.includes('[BREAK]')) {
+      const sentences = finalText.split(/(?<=[.!?])\s+/).filter(s => s.length > 0);
+      if (sentences.length >= 3) {
+        const chunks: string[] = [];
+        for (let i = 0; i < sentences.length; i += 2) {
+          chunks.push(sentences.slice(i, i + 2).join(' '));
+        }
+        finalText = chunks.join('[BREAK]');
+        logger.info({ msg: '[BREAK] safety net aplicado', sentences: sentences.length });
+      }
+    }
+
     return finalText || 'Desculpa, não consegui processar sua mensagem. Pode repetir?';
   } catch (error: any) {
     logger.error({ msg: 'Erro no OpenAI', status: error?.status, message: error?.message, code: error?.code, type: error?.type });

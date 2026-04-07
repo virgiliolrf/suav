@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { fuzzySearch, normalize } from '../utils/fuzzy';
 import { logger } from '../utils/logger';
+import { WALKIN_ONLY_KEYWORDS } from '../config/services';
 
 const prisma = new PrismaClient();
 
@@ -21,30 +22,30 @@ interface ServiceResult {
   professionals: string[];
 }
 
+/**
+ * Verifica se o servico buscado e walk-in only (atendido presencialmente, sem agendamento)
+ */
+export function isWalkInOnlyService(query: string): boolean {
+  const normalized = normalize(query);
+  return WALKIN_ONLY_KEYWORDS.some(kw => normalized.includes(normalize(kw)));
+}
+
 /** Mapeamento de sinônimos e termos populares para nomes reais de serviços */
 const SYNONYMS: Record<string, string> = {
-  'manicure': 'unha tradicional',
-  'pedicure': 'unha tradicional pe',
-  'mão e pé': 'unha tradicional mao pe',
-  'francesinha': 'unha francesinha',
   'gel': 'unha gel',
   'unha de gel': 'unha gel',
-  'fazer unha': 'unha tradicional',
-  'fazer as unhas': 'unha tradicional',
-  'pintar unha': 'unha express esmaltar',
-  'esmalte': 'unha express esmaltar',
+  'fazer unha': 'unha gel',
+  'fazer as unhas': 'unha gel',
   'chapinha': 'escova chapinha',
   'babyliss': 'escova chapinha babyliss',
   'tintura': 'coloracao',
   'pintar cabelo': 'coloracao',
   'luzes': 'mechas papelotes',
-  'laser': 'luz pulsada',
-  'massagem': 'massagem relaxante drenagem',
-  'limpeza de pele': 'limpeza de pele hidratacao',
-  'cilios': 'extensao de cilios',
-  'henna': 'coloracao sobrancelha henna',
-  'sombrancelha': 'design de sobrancelhas',
-  'sombracelha': 'design de sobrancelhas',
+  'blindagem': 'banho de gel blindagem',
+  'hidratacao': 'hidratacao wella',
+  'retoque': 'retoque de raiz',
+  'botox': 'selagem botox capilar',
+  'selagem': 'selagem botox capilar',
 };
 
 /**
