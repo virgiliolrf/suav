@@ -395,7 +395,7 @@ export async function processMessage(params: {
 
     // [BREAK] safety net: se o modelo não usou [BREAK] e a resposta é longa, inserir automaticamente
     if (role !== 'admin' && finalText && !finalText.includes('[BREAK]')) {
-      const sentences = finalText.split(/(?<=[.!?])\s+/).filter(s => s.length > 0);
+      const sentences = finalText.split(/(?<=[.!?])\s+/).filter((s: string) => s.length > 0);
       if (sentences.length >= 3) {
         const chunks: string[] = [];
         for (let i = 0; i < sentences.length; i += 2) {
