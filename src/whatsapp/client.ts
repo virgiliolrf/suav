@@ -40,7 +40,7 @@ function startQRServer() {
     try {
       const qrDataUrl = await QRCode.toDataURL(currentQR, { width: 400, margin: 2 });
       res.writeHead(200);
-      res.end(`<html><head><meta http-equiv="refresh" content="30"></head><body style="background:#111;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;font-family:sans-serif"><h2>SUAV Bot - Escaneie o QR Code</h2><img src="${qrDataUrl}" style="border-radius:12px"/><p style="color:#888;margin-top:20px">Abra o WhatsApp > Aparelhos conectados > Conectar</p></body></html>`);
+      res.end(`<html><head><meta http-equiv="refresh" content="5"></head><body style="background:#111;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;font-family:sans-serif"><h2>SUAV Bot - Escaneie o QR Code</h2><img src="${qrDataUrl}" style="border-radius:12px"/><p style="color:#888;margin-top:20px">Abra o WhatsApp > Aparelhos conectados > Conectar</p><p style="color:#666;font-size:0.8em">Página atualiza a cada 5 segundos</p></body></html>`);
     } catch {
       res.writeHead(500);
       res.end('Erro ao gerar QR');
