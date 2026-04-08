@@ -1,6 +1,10 @@
 import { execSync } from 'child_process';
 import { PrismaClient } from '@prisma/client';
 
+function normalizeText(text: string): string {
+  return text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '').trim().replace(/\s+/g, ' ');
+}
+
 const DATABASE_URL = process.env.DATABASE_URL;
 
 if (!DATABASE_URL) {
@@ -24,13 +28,56 @@ try {
 async function main() {
   const prisma = new PrismaClient();
   try {
-    // Verificar se o banco ja tem dados (seed somente se vazio)
-    const count = await prisma.category.count();
-    if (count === 0) {
+    // Verificar se o banco precisa de seed (vazio ou catálogo desatualizado)
+    const categoryCount = await prisma.category.count();
+    const serviceCount = await prisma.service.count({ where: { active: true } });
+    const EXPECTED_CATEGORIES = 2; // Esmalteria + Cabelos
+    const EXPECTED_SERVICES = 18;
+
+    if (categoryCount === 0) {
       console.log('[start] Banco vazio detectado, rodando seed...');
       execSync('npx tsx prisma/seed.ts', { stdio: 'inherit' });
+    } else if (categoryCount > EXPECTED_CATEGORIES || serviceCount > EXPECTED_SERVICES + 5) {
+      console.log(`[start] Catálogo desatualizado (${categoryCount} categorias, ${serviceCount} serviços ativos). Desativando serviços/profissionais antigos...`);
+      // Desativar profissionais que não estão mais na lista
+      const { PROFESSIONALS: expectedProfs } = require('../config/services');
+      const expectedNames = expectedProfs.map((p: any) => p.normalizedName);
+      await prisma.professional.updateMany({
+        where: { normalizedName: { notIn: expectedNames } },
+        data: { active: false },
+      });
+      console.log('[start] Profissionais antigos desativados.');
+      // Desativar serviços das categorias removidas
+      const { CATEGORIES: expectedCats } = require('../config/services');
+      const expectedSlugs = expectedCats.map((c: any) => c.slug);
+      const removedCategories = await prisma.category.findMany({
+        where: { slug: { notIn: expectedSlugs } },
+      });
+      for (const cat of removedCategories) {
+        await prisma.service.updateMany({
+          where: { categoryId: cat.id },
+          data: { active: false },
+        });
+        console.log(`[start] Serviços da categoria "${cat.name}" desativados.`);
+      }
+      // Desativar serviços de esmalteria que não estão mais na lista
+      const { SERVICES: expectedServices } = require('../config/services');
+      const expectedServiceNames = expectedServices.map((s: any) => normalizeText(s.name));
+      const allActiveServices = await prisma.service.findMany({ where: { active: true } });
+      for (const svc of allActiveServices) {
+        if (!expectedServiceNames.includes(normalizeText(svc.name))) {
+          await prisma.service.update({ where: { id: svc.id }, data: { active: false } });
+          console.log(`[start] Serviço desativado: "${svc.name}"`);
+        }
+      }
+      // Atualizar preço da Aplicação Unha em Gel (189→199)
+      await prisma.service.updateMany({
+        where: { normalizedName: 'aplicacao unha em gel' },
+        data: { price: 199 },
+      });
+      console.log('[start] Catálogo atualizado (sem perder histórico).');
     } else {
-      console.log(`[start] Banco ja possui dados (${count} categorias). Seed pulado.`);
+      console.log(`[start] Banco OK (${categoryCount} categorias, ${serviceCount} serviços). Seed pulado.`);
     }
 
     // === GARANTIR ADMINS NO BANCO (sempre, nao apenas no seed) ===
